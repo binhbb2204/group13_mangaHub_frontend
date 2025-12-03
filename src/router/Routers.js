@@ -5,17 +5,23 @@ import Home from '../pages/Home'
 import Login from '../pages/Login'
 import Register from '../pages/Register'
 import Manga from '../pages/Manga'
+import Library from '../pages/Library'
 import Chat from '../pages/Chat'
 import MangaDetails from './../pages/MangaDetails'
+import TopRankedManga from '../pages/TopRankedManga'
+import Settings from '../pages/Settings'
 const Routers = () => {
   return (
     <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/manga" element={<Manga />} />
+        <Route path="/library" element={<Library />} />
         <Route path="/chat" element={<Chat />} />
-        <Route path="/chat/:id" element={<MangaDetails />} />
+        <Route path="/manga/:id" element={<MangaDetails />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/top-ranked" element={<TopRankedManga />} />
+        <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   )

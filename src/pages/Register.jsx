@@ -48,7 +48,7 @@ const Register = () => {
         throw new Error('Password must contain uppercase, lowercase, and numbers');
       }
 
-      const response = await axios.post('http://localhost:8081/auth/register', {
+      const response = await axios.post('http://localhost:8080/auth/register', {
         username: formData.username,
         email: formData.email,
         password: formData.password,
