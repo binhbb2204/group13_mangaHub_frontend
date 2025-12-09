@@ -298,7 +298,10 @@ const Home = () => {
                       style={{ scrollbarWidth: 'none', gap: `${GAP}px` }}
                     >
                       {displayMangas.map((manga, i) => (
-                        <div key={`${manga.id}-${i}`} className="flex-shrink-0 snap-start group/card cursor-pointer relative" style={{ width: CARD_WIDTH }}>
+                        <div 
+                          key={`${manga.id}-${i}`} 
+                          onClick={() => navigate(`/manga/${manga.id}`)}
+                          className="flex-shrink-0 snap-start group/card cursor-pointer relative" style={{ width: CARD_WIDTH }}>
                           <div className="aspect-[2/3] rounded-2xl overflow-hidden shadow-sm bg-slate-100 group-hover/card:shadow-[0_20px_40px_-10px_rgba(0,0,0,0.3)] transition-all duration-300 transform group-hover/card:-translate-y-2">
                             <img src={manga.main_picture?.large} alt={manga.title} className="w-full h-full object-cover transition-transform duration-700 group-hover/card:scale-110" />
                             <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity duration-300"></div>

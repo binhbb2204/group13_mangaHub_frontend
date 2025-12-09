@@ -9,11 +9,14 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  
+  // 1. Changed 'username' to 'identifier' to store either email or username
   const [formData, setFormData] = useState({
-    username: '',
+    identifier: '', 
     password: '',
     rememberMe: false
   });
+  
   const navigate = useNavigate();
 
   const handleInputChange = (e) => {
@@ -22,7 +25,6 @@ const Login = () => {
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }));
-    // Clear error when user starts typing
     if (error) setError('');
   };
 
@@ -31,15 +33,22 @@ const Login = () => {
     setLoading(true);
     setError('');
 
+    // 2. Determine if the input is an email or a username
+    const isEmail = formData.identifier.includes('@');
+    
+    // 3. Construct the payload dynamically based on the input type
+    const loginPayload = {
+      password: formData.password,
+      // If it contains '@', use 'email' key, otherwise use 'username' key
+      [isEmail ? 'email' : 'username']: formData.identifier
+    };
+
     try {
-      const response = await axios.post('http://localhost:8080/auth/login', {
-        username: formData.username,
-        password: formData.password,
-      });
+      // Send the dynamic payload
+      const response = await axios.post('http://localhost:8080/auth/login', loginPayload);
 
       const data = response.data;
       
-      // Store token and user data
       localStorage.setItem('token', data.token);
       localStorage.setItem('user_id', data.user_id);
       localStorage.setItem('username', data.username);
@@ -50,14 +59,10 @@ const Login = () => {
       }
 
       console.log('Login successful:', data);
-      
-      // Redirect to home page
       navigate('/');
       
     } catch (err) {
-      // Handle error from backend
       let errorMessage = 'Login failed';
-      
       if (err.response?.data?.error) {
         errorMessage = err.response.data.error;
       } else if (err.response?.data?.message) {
@@ -65,7 +70,6 @@ const Login = () => {
       } else if (err.message) {
         errorMessage = err.message;
       }
-      
       setError(errorMessage);
       console.error('Error:', err);
     } finally {
@@ -75,7 +79,7 @@ const Login = () => {
 
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-      {/* Floating Error Toast - Top Right */}
+      {/* Error Toast */}
       {error && (
         <div className="fixed top-4 right-4 z-50 animate-slide-in">
           <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-lg shadow-lg max-w-md">
@@ -88,10 +92,7 @@ const Login = () => {
               <div className="ml-3 flex-1">
                 <p className="text-sm font-medium">{error}</p>
               </div>
-              <button
-                onClick={() => setError('')}
-                className="ml-4 flex-shrink-0 text-red-500 hover:text-red-700"
-              >
+              <button onClick={() => setError('')} className="ml-4 flex-shrink-0 text-red-500 hover:text-red-700">
                 <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
                 </svg>
@@ -102,25 +103,26 @@ const Login = () => {
       )}
 
       <div className="w-full max-w-6xl h-[600px] bg-white rounded-3xl shadow-2xl overflow-hidden flex">
-        {/* Blue Panel - Left Side */}
+        {/* Blue Panel */}
         <div className="w-1/2 bg-gradient-to-br from-blue-500 to-blue-700 flex flex-col items-center justify-center text-white p-12 rounded-r-3xl">
           <h1 className="text-5xl font-bold mb-4">MANGA HUB</h1>
           <p className="text-xl text-center">Your gateway to manga universe</p>
         </div>
 
-        {/* Login Form - Right Side */}
+        {/* Login Form */}
         <div className="w-1/2 flex flex-col items-center justify-center p-12">
           <h2 className="text-4xl font-bold text-gray-800 mb-2">Welcome Back</h2>
           <p className="text-gray-500 mb-8">Sign in to continue</p>
 
           <form onSubmit={handleSubmit} className="w-full max-w-md space-y-6">
             <div className="relative">
+              {/* 4. Updated Input Name and Placeholder */}
               <input
                 type="text"
-                name="username"
-                value={formData.username}
+                name="identifier" 
+                value={formData.identifier}
                 onChange={handleInputChange}
-                placeholder="Username"
+                placeholder="Username or Email" 
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
                 disabled={loading}
@@ -173,28 +175,20 @@ const Login = () => {
               {loading ? 'Signing In...' : 'Sign In'}
             </button>
 
+            {/* Social Logins... (kept same) */}
             <div className="relative flex items-center justify-center my-6">
               <div className="border-t border-gray-300 w-full"></div>
               <span className="absolute bg-white px-4 text-gray-500 text-sm">Or continue with</span>
             </div>
 
             <div className="grid grid-cols-3 gap-4">
-              <button
-                type="button"
-                className="flex items-center justify-center p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
+              <button type="button" className="flex items-center justify-center p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
                 <FcGoogle size={24} />
               </button>
-              <button
-                type="button"
-                className="flex items-center justify-center p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
+              <button type="button" className="flex items-center justify-center p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
                 <FaFacebook size={24} className="text-blue-600" />
               </button>
-              <button
-                type="button"
-                className="flex items-center justify-center p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
+              <button type="button" className="flex items-center justify-center p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
                 <FaGithub size={24} />
               </button>
             </div>

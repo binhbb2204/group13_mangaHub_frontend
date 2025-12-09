@@ -1,13 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
-  Menu, X, BookOpen, MessageCircle, Settings 
+  Menu, X, BookOpen, MessageCircle, Settings, LogOut, 
+  User, ChevronDown 
 } from 'lucide-react';
+import axios from 'axios';
 
 const Header = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false); // New state for dropdown
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [username, setUsername] = useState('');
+  
   const location = useLocation();
+  const navigate = useNavigate();
+  const dropdownRef = useRef(null); // Ref to close dropdown when clicking outside
 
   // ==========================================
   // 1. CONFIGURATION
@@ -16,19 +24,63 @@ const Header = () => {
   const isDarkPage = darkHeroRoutes.includes(location.pathname);
 
   // ==========================================
-  // 2. SCROLL LISTENER
+  // 2. SCROLL & EVENT LISTENERS
   // ==========================================
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 10);
     };
     window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    
+    // Close dropdown when clicking outside
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsUserDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, []);
+
+  // Check login status
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const storedUsername = localStorage.getItem('username');
+    if (token && storedUsername) {
+      setIsLoggedIn(true);
+      setUsername(storedUsername);
+    } else {
+      setIsLoggedIn(false);
+      setUsername('');
+    }
+  }, [location]);
 
   useEffect(() => {
     setIsMobileMenuOpen(false);
+    setIsUserDropdownOpen(false); // Close dropdown on route change
   }, [location]);
+
+  // Handle logout
+  const handleLogout = async () => {
+    try {
+      await axios.post('http://localhost:8080/auth/logout', {}, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      localStorage.clear();
+      setIsLoggedIn(false);
+      setUsername('');
+      setIsMobileMenuOpen(false);
+      setIsUserDropdownOpen(false);
+      navigate('/');
+    }
+  };
 
   // ==========================================
   // 3. DYNAMIC STYLING LOGIC
@@ -50,11 +102,10 @@ const Header = () => {
     { name: 'Manga', path: '/manga' },
   ];
 
-  // 2. Added Settings to userLinks
-  const userLinks = [
+  // REMOVED Settings from here (it's now in dropdown)
+  const quickLinks = [
     { name: 'Library', path: '/library', icon: <BookOpen className="w-4 h-4" /> },
     { name: 'Chat', path: '/chat', icon: <MessageCircle className="w-4 h-4" /> },
-    { name: 'Settings', path: '/settings', icon: <Settings className="w-4 h-4" /> },
   ];
 
   const isActive = (path) => {
@@ -98,12 +149,14 @@ const Header = () => {
           ))}
         </nav>
 
-        {/* --- RIGHT ACTIONS --- */}
+        {/* --- RIGHT ACTIONS (DESKTOP) --- */}
         <div className="hidden lg:flex items-center gap-6">
+          
+          {/* Quick Links (Library, Chat) */}
           <div className={`flex items-center gap-4 border-r pr-6 transition-colors ${
             useDarkText ? 'border-slate-200' : 'border-white/20'
           }`}>
-            {userLinks.map((link) => (
+            {quickLinks.map((link) => (
               <Link 
                 key={link.path} 
                 to={link.path}
@@ -119,21 +172,78 @@ const Header = () => {
             ))}
           </div>
 
-          <div className="flex items-center gap-3">
-            <Link to="/login">
-              <button className={`text-sm font-bold px-4 py-2 rounded-full transition-all ${
-                useDarkText 
-                  ? 'text-slate-600 hover:text-indigo-600 hover:bg-slate-50' 
-                  : 'text-white hover:text-indigo-300 hover:bg-white/10'
-              }`}>
-                Log In
-              </button>
-            </Link>
-            <Link to="/register">
-              <button className="text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-5 py-2.5 rounded-full shadow-md shadow-indigo-500/20 transition-all transform hover:-translate-y-0.5">
-                Sign Up
-              </button>
-            </Link>
+          {/* User Section / Dropdown */}
+          <div className="relative" ref={dropdownRef}>
+            {isLoggedIn ? (
+              <>
+                {/* Trigger Button */}
+                <button 
+                  onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
+                  className={`flex items-center gap-3 pl-2 pr-3 py-1.5 rounded-full border transition-all ${
+                    useDarkText 
+                      ? 'border-slate-200 bg-slate-50 hover:border-indigo-200 text-slate-700' 
+                      : 'border-white/20 bg-white/10 hover:bg-white/20 text-white'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs font-bold">
+                    {username ? username[0].toUpperCase() : <User size={14} />}
+                  </div>
+                  <span className="text-sm font-bold max-w-[100px] truncate">
+                    {username}
+                  </span>
+                  <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isUserDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {/* Dropdown Menu */}
+                {isUserDropdownOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-100 py-2 animate-in fade-in slide-in-from-top-2 overflow-hidden">
+                    <div className="px-4 py-3 border-b border-slate-50 bg-slate-50/50">
+                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Signed in as</p>
+                      <p className="text-sm font-bold text-slate-800 truncate">{username}</p>
+                    </div>
+
+                    <div className="py-1">
+                      <Link 
+                        to="/settings" 
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                        onClick={() => setIsUserDropdownOpen(false)}
+                      >
+                        <Settings className="w-4 h-4" />
+                        Settings
+                      </Link>
+                    </div>
+
+                    <div className="border-t border-slate-100 py-1">
+                      <button 
+                        onClick={handleLogout}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors text-left"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        Sign out
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              // Login/Register Buttons (unchanged)
+              <div className="flex items-center gap-3">
+                <Link to="/login">
+                  <button className={`text-sm font-bold px-4 py-2 rounded-full transition-all ${
+                    useDarkText 
+                      ? 'text-slate-600 hover:text-indigo-600 hover:bg-slate-50' 
+                      : 'text-white hover:text-indigo-300 hover:bg-white/10'
+                  }`}>
+                    Log In
+                  </button>
+                </Link>
+                <Link to="/register">
+                  <button className="text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-5 py-2 rounded-full shadow-md shadow-indigo-500/20 transition-all hover:-translate-y-0.5">
+                    Sign Up
+                  </button>
+                </Link>
+              </div>
+            )}
           </div>
         </div>
 
@@ -154,7 +264,8 @@ const Header = () => {
           
           {/* Main Links */}
           <div className="flex flex-col gap-2 border-b border-slate-100 pb-4">
-            {[...navLinks, ...userLinks].map((link) => (
+            {/* Nav Links */}
+            {[...navLinks, ...quickLinks].map((link) => (
               <Link 
                 key={link.path} 
                 to={link.path}
@@ -166,20 +277,53 @@ const Header = () => {
                 {link.name}
               </Link>
             ))}
+            
+            {/* Manually add Settings for Mobile view since it's hidden in dropdown on desktop */}
+            {isLoggedIn && (
+              <Link 
+                to="/settings"
+                className={`p-3 rounded-xl flex items-center gap-3 font-bold text-base ${
+                  isActive('/settings') ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <Settings className="w-4 h-4" />
+                Settings
+              </Link>
+            )}
           </div>
 
           {/* Auth Mobile */}
           <div className="flex flex-col gap-3">
-            <Link to="/login" className="w-full">
-              <button className="w-full text-center font-bold text-slate-600 border border-slate-200 py-3.5 rounded-xl hover:bg-slate-50 active:scale-95 transition-all">
-                Log In
-              </button>
-            </Link>
-            <Link to="/register" className="w-full">
-              <button className="w-full text-center font-bold text-white bg-indigo-600 py-3.5 rounded-xl hover:bg-indigo-700 active:scale-95 transition-all shadow-md shadow-indigo-500/20">
-                Sign Up Free
-              </button>
-            </Link>
+            {isLoggedIn ? (
+              <>
+                <div className="p-3 rounded-xl bg-indigo-50 flex items-center gap-3">
+                  <div className="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center text-white font-bold text-xs">
+                    {username ? username[0].toUpperCase() : 'U'}
+                  </div>
+                  <p className="text-sm font-bold text-indigo-900">{username}</p>
+                </div>
+                <button 
+                  onClick={handleLogout}
+                  className="w-full text-center font-bold text-white bg-red-600 py-3.5 rounded-xl hover:bg-red-700 active:scale-95 transition-all shadow-md shadow-red-500/20 flex items-center justify-center gap-2"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Logout
+                </button>
+              </>
+            ) : (
+              <>
+                <Link to="/login" className="w-full">
+                  <button className="w-full text-center font-bold text-slate-600 border border-slate-200 py-3.5 rounded-xl hover:bg-slate-50 active:scale-95 transition-all">
+                    Log In
+                  </button>
+                </Link>
+                <Link to="/register" className="w-full">
+                  <button className="w-full text-center font-bold text-white bg-indigo-600 py-3.5 rounded-xl hover:bg-indigo-700 active:scale-95 transition-all shadow-md shadow-indigo-500/20">
+                    Sign Up Free
+                  </button>
+                </Link>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -10,6 +10,7 @@ import Chat from '../pages/Chat'
 import MangaDetails from './../pages/MangaDetails'
 import TopRankedManga from '../pages/TopRankedManga'
 import Settings from '../pages/Settings'
+import ChatDetails from '../pages/ChatDetails'
 const Routers = () => {
   return (
     <Routes>
@@ -17,6 +18,7 @@ const Routers = () => {
         <Route path="/manga" element={<Manga />} />
         <Route path="/library" element={<Library />} />
         <Route path="/chat" element={<Chat />} />
+        <Route path="/chat/:id" element={<ChatDetails />} />
         <Route path="/manga/:id" element={<MangaDetails />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />

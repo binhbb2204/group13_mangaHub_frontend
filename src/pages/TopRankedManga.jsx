@@ -263,7 +263,9 @@ const TopRankedManga = () => {
                             {manga.mean || manga.score || "N/A"}
                           </span>
                         </div>
-                        <button className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-full transition-colors">
+                        <button 
+                        onClick={() => navigate(`/manga/${manga.id}`)}
+                        className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-full transition-colors">
                           View Details
                         </button>
                     </div>

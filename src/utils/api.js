@@ -45,6 +45,9 @@ export const authAPI = {
 
   register: (username, email, password) =>
     axiosInstance.post('/auth/register', { username, email, password }),
+
+  logout: () =>
+    axiosInstance.post('/auth/logout', {}),
 };
 
 export default axiosInstance;
