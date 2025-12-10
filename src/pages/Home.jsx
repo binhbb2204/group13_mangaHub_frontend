@@ -344,7 +344,7 @@ const Home = () => {
                     </h3>
                   </div>
                   <button 
-                    onClick={() => navigate('/top-ranked?type=all&page=1&limit=100')}
+                    onClick={() => navigate('/manga?type=default&page=1&limit=100')}
                     className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-1 rounded-full transition-colors select-none"
                   >
                     View All
