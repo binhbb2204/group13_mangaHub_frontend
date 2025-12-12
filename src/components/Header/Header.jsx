@@ -7,25 +7,22 @@ import {
 import axios from 'axios';
 
 const Header = () => {
+  // 1. ALL HOOKS MUST BE DECLARED FIRST
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false); // New state for dropdown
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [username, setUsername] = useState('');
   
   const location = useLocation();
   const navigate = useNavigate();
-  const dropdownRef = useRef(null); // Ref to close dropdown when clicking outside
+  const dropdownRef = useRef(null);
 
-  // ==========================================
-  // 1. CONFIGURATION
-  // ==========================================
+  // 2. CONFIGURATION
   const darkHeroRoutes = ['/', '/featured']; 
   const isDarkPage = darkHeroRoutes.includes(location.pathname);
 
-  // ==========================================
-  // 2. SCROLL & EVENT LISTENERS
-  // ==========================================
+  // 3. SCROLL & EVENT LISTENERS (useEffect)
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 10);
@@ -46,7 +43,7 @@ const Header = () => {
     };
   }, []);
 
-  // Check login status
+  // Check login status (useEffect)
   useEffect(() => {
     const token = localStorage.getItem('token');
     const storedUsername = localStorage.getItem('username');
@@ -59,9 +56,10 @@ const Header = () => {
     }
   }, [location]);
 
+  // Reset menus on route change (useEffect)
   useEffect(() => {
     setIsMobileMenuOpen(false);
-    setIsUserDropdownOpen(false); // Close dropdown on route change
+    setIsUserDropdownOpen(false);
   }, [location]);
 
   // Handle logout
@@ -82,9 +80,13 @@ const Header = () => {
     }
   };
 
-  // ==========================================
-  // 3. DYNAMIC STYLING LOGIC
-  // ==========================================
+  // 4. CONDITIONAL RENDER (MUST BE AFTER HOOKS)
+  // If we are on the reading page, do not render the header
+  if (location.pathname.startsWith('/read/')) {
+    return null;
+  }
+
+  // 5. DYNAMIC STYLING LOGIC
   const useDarkText = isScrolled || !isDarkPage;
 
   const getHeaderBackground = () => {
@@ -102,7 +104,6 @@ const Header = () => {
     { name: 'Manga', path: '/manga' },
   ];
 
-  // REMOVED Settings from here (it's now in dropdown)
   const quickLinks = [
     { name: 'Library', path: '/library', icon: <BookOpen className="w-4 h-4" /> },
     { name: 'Chat', path: '/chat', icon: <MessageCircle className="w-4 h-4" /> },
@@ -113,6 +114,7 @@ const Header = () => {
     return location.pathname.startsWith(path);
   };
 
+  // 6. FINAL RETURN
   return (
     <header 
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${getHeaderBackground()}`}
@@ -226,7 +228,7 @@ const Header = () => {
                 )}
               </>
             ) : (
-              // Login/Register Buttons (unchanged)
+              // Login/Register Buttons
               <div className="flex items-center gap-3">
                 <Link to="/login">
                   <button className={`text-sm font-bold px-4 py-2 rounded-full transition-all ${
@@ -278,7 +280,7 @@ const Header = () => {
               </Link>
             ))}
             
-            {/* Manually add Settings for Mobile view since it's hidden in dropdown on desktop */}
+            {/* Manually add Settings for Mobile view */}
             {isLoggedIn && (
               <Link 
                 to="/settings"

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Star, BookOpen, Users, Trophy, 
   Hash, Heart, ArrowLeft, Send,
-  MessageCircle, ChevronDown, ChevronUp, Loader2
+  MessageCircle, ChevronDown, ChevronUp, Loader2, List
 } from 'lucide-react';
 
 const MangaDetails = () => {
@@ -11,6 +11,7 @@ const MangaDetails = () => {
   const navigate = useNavigate();
   
   const [manga, setManga] = useState(null);
+  const [chapters, setChapters] = useState([]); // // Added state for chapters
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
@@ -22,17 +23,31 @@ const MangaDetails = () => {
   const [commentText, setCommentText] = useState("");
   const [reviews, setReviews] = useState([]); 
   
-  // Input State (Only tracks clicks now)
+  // Input State
   const [inputRating, setInputRating] = useState(0);
 
   useEffect(() => {
     const fetchMangaDetails = async () => {
       try {
         setLoading(true);
+        // 1. Fetch Basic Info
         const response = await fetch(`http://localhost:8080/manga/info/${id}`);
         if (!response.ok) throw new Error('Failed to load manga details');
         const data = await response.json();
         setManga(data);
+
+        // // 2. Fetch Chapters using mangadex_id
+        if (data.mangadex_id) {
+            const chResponse = await fetch(`http://localhost:8080/manga/chapters/${data.mangadex_id}?language=en&limit=100`);
+            if (chResponse.ok) {
+                const chData = await chResponse.json();
+                // // Sort chapters by number
+                const sorted = (chData.chapters || []).sort((a, b) => 
+                    parseFloat(a.chapter) - parseFloat(b.chapter)
+                );
+                setChapters(sorted);
+            }
+        }
       } catch (err) {
         setError(err.message);
       } finally {
@@ -73,6 +88,18 @@ const MangaDetails = () => {
     if (value === null || value === undefined) return '?';
     if (value === 0) return 'Unknown'; 
     return value;
+  };
+
+  // // Handle Start Reading (First Chapter)
+  const handleStartReading = () => {
+    if (chapters.length > 0 && manga.mangadex_id) {
+        navigate(`/read/${manga.mangadex_id}/${chapters[0].id}`);
+    }
+  };
+
+  // // Handle Specific Chapter Click
+  const handleChapterClick = (chapterId) => {
+     navigate(`/read/${manga.mangadex_id}/${chapterId}`);
   };
 
   const handleJoinChat = () => {
@@ -163,10 +190,12 @@ const MangaDetails = () => {
             {/* Action Buttons */}
             <div className="w-full space-y-3 sticky top-24">
               <button 
-                className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-lg rounded-xl shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2 active:scale-95"
+                onClick={handleStartReading}
+                disabled={chapters.length === 0}
+                className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-black text-lg rounded-xl shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2 active:scale-95"
               >
                 <BookOpen className="w-5 h-5" />
-                Start Reading
+                {chapters.length > 0 ? "Start Reading" : "No Chapters"}
               </button>
 
               <button 
@@ -295,38 +324,76 @@ const MangaDetails = () => {
                 <div className="lg:col-span-1 space-y-4">
                   <h3 className="text-xl font-bold text-slate-800 mb-3">Information</h3>
                   <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm space-y-4">
-                     <div className="flex justify-between items-center text-sm border-b border-slate-50 pb-3">
+                      <div className="flex justify-between items-center text-sm border-b border-slate-50 pb-3">
                         <span className="text-slate-400 font-medium">Type</span>
                         <span className="font-bold text-slate-700 capitalize">{manga.media_type || 'Manga'}</span>
-                     </div>
-                     <div className="flex justify-between items-center text-sm border-b border-slate-50 pb-3">
+                      </div>
+                      <div className="flex justify-between items-center text-sm border-b border-slate-50 pb-3">
                         <span className="text-slate-400 font-medium">Volumes</span>
                         <span className="font-bold text-slate-700">
                           {formatValue(manga, ['num_volumes', 'volumes'])}
                         </span>
-                     </div>
-                     <div className="flex justify-between items-center text-sm border-b border-slate-50 pb-3">
+                      </div>
+                      <div className="flex justify-between items-center text-sm border-b border-slate-50 pb-3">
                         <span className="text-slate-400 font-medium">Chapters</span>
                         <span className="font-bold text-slate-700">
                            {formatValue(manga, ['total_chapters', 'num_chapters', 'chapters'])}
                         </span>
-                     </div>
-                     <div className="flex justify-between items-center text-sm border-b border-slate-50 pb-3">
+                      </div>
+                      <div className="flex justify-between items-center text-sm border-b border-slate-50 pb-3">
                         <span className="text-slate-400 font-medium">Published</span>
                         <div className="text-right">
                           <span className="font-bold text-slate-700 block">{formatDate(manga.start_date)}</span>
                           <span className="text-xs text-slate-400">to {formatDate(manga.end_date)}</span>
                         </div>
-                     </div>
-                     <div className="flex justify-between items-center text-sm">
+                      </div>
+                      <div className="flex justify-between items-center text-sm">
                         <span className="text-slate-400 font-medium">Serialization</span>
                         <span className="font-bold text-indigo-600 truncate max-w-[150px] text-right">
                           {manga.serialization?.[0]?.node?.name || 'Unknown'}
                         </span>
-                     </div>
+                      </div>
                   </div>
                 </div>
               </div>
+
+              {/* // --- CHAPTER LIST SECTION --- */}
+              <section>
+                <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                        <List className="w-5 h-5 text-indigo-600"/> Chapters 
+                        <span className="text-sm font-normal text-slate-500">({chapters.length})</span>
+                    </h3>
+                </div>
+                
+                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden max-h-[500px] overflow-y-auto">
+                    {chapters.length === 0 ? (
+                        <div className="p-8 text-center text-slate-400 text-sm">No chapters available.</div>
+                    ) : (
+                        <div className="divide-y divide-slate-50">
+                            {chapters.map((chapter) => (
+                                <button 
+                                    key={chapter.id}
+                                    onClick={() => handleChapterClick(chapter.id)}
+                                    className="w-full text-left p-4 hover:bg-indigo-50 transition-colors flex justify-between items-center group"
+                                >
+                                    <div>
+                                        <div className="font-bold text-slate-700 group-hover:text-indigo-700">
+                                            Chapter {chapter.chapter}
+                                        </div>
+                                        {chapter.title && (
+                                            <div className="text-xs text-slate-400 mt-0.5 max-w-[200px] md:max-w-none truncate">{chapter.title}</div>
+                                        )}
+                                    </div>
+                                    <div className="text-xs font-bold text-slate-300 group-hover:text-indigo-300 whitespace-nowrap ml-4">
+                                        {formatDate(chapter.readableAt)}
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+              </section>
 
               {/* Discussion & Rating Section */}
               <section id="discussion">
@@ -344,13 +411,13 @@ const MangaDetails = () => {
                   
                   {/* Review Input Box */}
                   <div className="p-6 bg-slate-50 border-b border-slate-100">
-                     <div className="flex gap-4">
+                      <div className="flex gap-4">
                         <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center font-bold text-indigo-600 flex-shrink-0">
                           U
                         </div>
                         <div className="flex-1 relative">
                           
-                          {/* 10-STAR RATING SELECTOR (CLICK ONLY) */}
+                          {/* 10-STAR RATING SELECTOR */}
                           <div className="flex items-center gap-2 mb-3">
                               <span className="text-xs font-bold text-slate-500 uppercase">Rate this:</span>
                               <div className="flex items-center bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-sm">
@@ -390,44 +457,44 @@ const MangaDetails = () => {
                             <Send className="w-4 h-4" />
                           </button>
                         </div>
-                     </div>
+                      </div>
                   </div>
 
                   {/* Reviews List */}
                   <div className="divide-y divide-slate-50">
-                     {reviews.length === 0 ? (
-                       <div className="p-10 text-center text-slate-400">
-                         <MessageCircle className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                         <p className="font-medium">No reviews yet.</p>
-                         <p className="text-sm">Be the first to share your thoughts!</p>
-                       </div>
-                     ) : (
-                       reviews.map((review) => (
-                         <div key={review.id} className="p-6 hover:bg-slate-50 transition-colors">
-                            <div className="flex items-center gap-3 mb-2">
-                                <span className="font-bold text-slate-800">{review.user}</span>
-                                {review.rating > 0 && (
-                                    <div className="flex items-center gap-1 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded text-xs font-bold text-amber-600">
-                                        <Star className="w-3 h-3 fill-amber-500 text-amber-500" /> 
-                                        {review.rating}/10
-                                    </div>
-                                )}
-                                <span className="text-xs text-slate-400">• {review.date}</span>
-                            </div>
-                            {review.content && (
-                                <p className="text-sm text-slate-600 leading-relaxed">{review.content}</p>
-                            )}
-                         </div>
-                       ))
-                     )}
-                     
-                     {reviews.length > 0 && (
-                        <div className="p-4 text-center">
-                            <button className="text-sm font-bold text-indigo-600 hover:text-indigo-700">
-                            Load More Reviews
-                            </button>
+                      {reviews.length === 0 ? (
+                        <div className="p-10 text-center text-slate-400">
+                          <MessageCircle className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                          <p className="font-medium">No reviews yet.</p>
+                          <p className="text-sm">Be the first to share your thoughts!</p>
                         </div>
-                     )}
+                      ) : (
+                        reviews.map((review) => (
+                          <div key={review.id} className="p-6 hover:bg-slate-50 transition-colors">
+                             <div className="flex items-center gap-3 mb-2">
+                                 <span className="font-bold text-slate-800">{review.user}</span>
+                                 {review.rating > 0 && (
+                                     <div className="flex items-center gap-1 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded text-xs font-bold text-amber-600">
+                                         <Star className="w-3 h-3 fill-amber-500 text-amber-500" /> 
+                                         {review.rating}/10
+                                     </div>
+                                 )}
+                                 <span className="text-xs text-slate-400">• {review.date}</span>
+                             </div>
+                             {review.content && (
+                                 <p className="text-sm text-slate-600 leading-relaxed">{review.content}</p>
+                             )}
+                          </div>
+                        ))
+                      )}
+                      
+                      {reviews.length > 0 && (
+                         <div className="p-4 text-center">
+                             <button className="text-sm font-bold text-indigo-600 hover:text-indigo-700">
+                             Load More Reviews
+                             </button>
+                         </div>
+                      )}
                   </div>
                 </div>
               </section>
