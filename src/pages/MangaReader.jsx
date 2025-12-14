@@ -18,13 +18,15 @@ const MangaReader = () => {
 
   // --- UI/Reading Preferences States ---
   const [readingMode, setReadingMode] = useState('vertical'); // 'vertical' | 'horizontal'
-  const [fitMode, setFitMode] = useState('width'); // 'width' | 'height' | 'original'
+  const [fitMode, setFitMode] = useState('width'); 
   const [settingsOpen, setSettingsOpen] = useState(false);
   
   // --- Navigation States ---
   const [currentHorizontalPage, setCurrentHorizontalPage] = useState(0); 
   const [showUI, setShowUI] = useState(true); 
 
+  // --- NEW: Refs for scroll syncing ---
+  const imageRefs = useRef({}); 
   const uiTimeoutRef = useRef(null);
 
   // 1. Fetch Chapter List
@@ -80,6 +82,50 @@ const MangaReader = () => {
     }
   }, [chapters, chapterId]);
 
+  // --- NEW: Scroll Sync Logic ---
+
+  // A. When switching TO Vertical mode, scroll to the current page
+  useEffect(() => {
+    if (readingMode === 'vertical' && !loading && pages.length > 0) {
+      // Small timeout ensures the DOM is rendered before we try to scroll
+      setTimeout(() => {
+        const targetImage = imageRefs.current[currentHorizontalPage];
+        if (targetImage) {
+          targetImage.scrollIntoView({ block: 'start' }); // 'auto' usually feels snappier for mode switches than 'smooth'
+        }
+      }, 10);
+    }
+  }, [readingMode, loading, pages.length]); // Intentionally exclude currentHorizontalPage to prevent auto-scrolling while simply reading
+
+  // B. When scrolling IN Vertical mode, update the current page index
+  // This ensures if you switch back to Horizontal, you are at the correct spot
+  useEffect(() => {
+    if (readingMode !== 'vertical' || loading || pages.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const index = Number(entry.target.dataset.index);
+            setCurrentHorizontalPage(index);
+          }
+        });
+      },
+      { 
+        rootMargin: '-40% 0px -40% 0px', // Trigger only when image is in the middle 20% of screen
+        threshold: 0
+      }
+    );
+
+    // Observe all current image refs
+    Object.values(imageRefs.current).forEach((el) => {
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, [readingMode, loading, pages]);
+
+
   // --- Interaction Logic (Hide/Show UI) ---
   const resetUITimer = useCallback(() => {
     setShowUI(true);
@@ -96,7 +142,7 @@ const MangaReader = () => {
     window.addEventListener('mousemove', resetUITimer);
     window.addEventListener('scroll', resetUITimer);
     window.addEventListener('click', resetUITimer);
-    window.addEventListener('keydown', resetUITimer); // Added keydown for horizontal arrow nav
+    window.addEventListener('keydown', resetUITimer);
     
     resetUITimer();
 
@@ -174,7 +220,7 @@ const MangaReader = () => {
             <ArrowLeft className="w-5 h-5" /> <span className="hidden sm:inline">Back</span>
           </button>
 
-          {/* Center: Chapter Navigation (The "Better Pill" integrated in header) */}
+          {/* Center: Chapter Navigation */}
           <div className="flex items-center gap-2 sm:gap-4 bg-white/5 px-2 py-1 rounded-full border border-white/5">
              <button 
                disabled={!currentChapterInfo?.prev}
@@ -257,8 +303,7 @@ const MangaReader = () => {
         className={`w-full mx-auto bg-black transition-all duration-300 ease-out outline-none
           ${readingMode === 'horizontal' ? 'h-screen flex items-center justify-center' : 'min-h-screen pt-16'}`}
         onClick={() => {
-           // In Horizontal mode, clicking edge or image advances page (optional UX)
-           // But mostly used to toggle UI via the global listener
+           // Optional: Click logic here
         }}
       >
         {loading ? (
@@ -273,7 +318,10 @@ const MangaReader = () => {
               <div className="flex flex-col items-center w-full">
                 {pages.map((url, i) => (
                   <img 
-                    key={i} 
+                    key={i}
+                    // Attach Ref and Dataset Index for syncing
+                    ref={(el) => (imageRefs.current[i] = el)}
+                    data-index={i}
                     src={url} 
                     alt={`Page ${i + 1}`} 
                     loading="lazy"
@@ -281,7 +329,7 @@ const MangaReader = () => {
                   />
                 ))}
 
-                {/* Vertical Bottom Navigation (Static, inline) */}
+                {/* Vertical Bottom Navigation */}
                 <div className="w-full max-w-4xl p-10 flex flex-col items-center justify-center gap-4">
                     {currentChapterInfo?.next ? (
                         <button 
@@ -306,7 +354,7 @@ const MangaReader = () => {
                   className={`shadow-2xl transition-all duration-200 ${getImageStyle()}`}
                 />
                 
-                {/* Page Indicator (Horizontal Only) */}
+                {/* Page Indicator */}
                 <div className={`absolute bottom-8 bg-black/70 px-4 py-1 rounded-full text-xs font-mono text-gray-300 pointer-events-none transition-opacity duration-300 ${showUI ? 'opacity-100' : 'opacity-0'}`}>
                     Page {currentHorizontalPage + 1} / {pages.length}
                 </div>
@@ -317,8 +365,6 @@ const MangaReader = () => {
       </div>
 
       {/* --- 3. HORIZONTAL ONLY CONTROLS --- */}
-      {/* These ONLY show up if readingMode is 'horizontal'. 
-          They control PAGE TURNING, not Chapter turning. */}
       {readingMode === 'horizontal' && !loading && (
          <div className={`fixed inset-0 pointer-events-none z-40 transition-opacity duration-300 ${showUI ? 'opacity-100' : 'opacity-0'}`}>
             <button 

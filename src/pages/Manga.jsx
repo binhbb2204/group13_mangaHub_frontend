@@ -250,12 +250,12 @@ const Manga = () => {
                 />
 
                 {/* Custom Sort Dropdown */}
-                <FilterDropdown 
+                {/* <FilterDropdown 
                   label="Sort By" 
                   options={SORT_OPTIONS} 
                   value={currentSortUI} 
                   onChange={(val) => updateParams({ type: val })} 
-                />
+                /> */}
 
                 {/* Genres Chips */}
                 <div className="mb-6">
