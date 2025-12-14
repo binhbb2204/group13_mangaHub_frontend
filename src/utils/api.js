@@ -1,7 +1,8 @@
 import axios from 'axios';
 
 // API base URL
-const API_BASE_URL = 'http://localhost:8081';
+// const API_BASE_URL = 'http://localhost:8081';
+const API_BASE_URL = 'http://localhost:8080';
 
 // Create axios instance with default config
 const axiosInstance = axios.create({
@@ -48,6 +49,26 @@ export const authAPI = {
 
   logout: () =>
     axiosInstance.post('/auth/logout', {}),
+};
+
+// Library API functions
+export const libraryAPI = {
+  getLibrary: () =>
+    axiosInstance.get('/users/library'),
+
+  addToLibrary: (mangaId, status = 'reading') =>
+    axiosInstance.post('/users/library', { manga_id: mangaId, status }),
+
+  removeFromLibrary: (mangaId) =>
+    axiosInstance.delete(`/users/library/${mangaId}`),
+
+  updateProgress: (mangaId, currentChapter, userRating = null) => {
+    const payload = { manga_id: mangaId, current_chapter: currentChapter };
+    if (userRating !== null) {
+      payload.user_rating = userRating;
+    }
+    return axiosInstance.put('/users/progress', payload);
+  },
 };
 
 export default axiosInstance;
