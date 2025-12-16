@@ -20,7 +20,7 @@ const MangaReader = () => {
 
   // --- UI/Reading Preferences States ---
   const [readingMode, setReadingMode] = useState('vertical'); // 'vertical' | 'horizontal'
-  const [fitMode, setFitMode] = useState('width'); 
+  const [fitMode, setFitMode] = useState('width');
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // --- Navigation States ---
@@ -28,7 +28,7 @@ const MangaReader = () => {
   const [showUI, setShowUI] = useState(true);
 
   // --- NEW: Refs for scroll syncing ---
-  const imageRefs = useRef({}); 
+  const imageRefs = useRef({});
   const uiTimeoutRef = useRef(null);
 
   // 1. Fetch Chapter List and Manga Info
@@ -84,19 +84,50 @@ const MangaReader = () => {
     fetchPages();
   }, [chapterId]);
 
-  // 3. Determine Navigation Info
+  // 3. Determine Navigation Info & Save Progress
   useEffect(() => {
-    if (chapters.length > 0 && chapterId) {
+    if (chapters.length > 0 && chapterId && mangaInfo) {
       const index = chapters.findIndex(c => c.id === chapterId);
       if (index !== -1) {
+        const currentChapter = chapters[index];
         setCurrentChapterInfo({
-          current: chapters[index],
+          current: currentChapter,
           prev: chapters[index - 1] || null,
           next: chapters[index + 1] || null
         });
+
+        // Save reading progress to backend
+        const saveProgress = async () => {
+          const token = localStorage.getItem('token');
+          if (!token || !mangaInfo.id) {
+            console.log('⚠️ Cannot save progress: Missing token or manga ID', { token: !!token, mangaId: mangaInfo?.id });
+            return;
+          }
+
+          try {
+            const chapterNumber = parseFloat(currentChapter.chapter);
+            console.log('🔄 Saving progress...', {
+              mangaId: mangaInfo.id,
+              chapterNumber,
+              mangadexId: mangaInfo.mangadex_id
+            });
+            await libraryAPI.updateProgress(mangaInfo.id, chapterNumber);
+            console.log(`✅ Progress saved: Chapter ${chapterNumber}`);
+          } catch (err) {
+            console.error('❌ Failed to save progress:', {
+              mangaId: mangaInfo.id,
+              chapterNumber: parseFloat(currentChapter.chapter),
+              error: err.message,
+              status: err.response?.status,
+              data: err.response?.data
+            });
+          }
+        };
+
+        saveProgress();
       }
     }
-  }, [chapters, chapterId]);
+  }, [chapters, chapterId, mangaInfo]);
 
   // --- NEW: Scroll Sync Logic ---
 
@@ -111,6 +142,7 @@ const MangaReader = () => {
         }
       }, 10);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readingMode, loading, pages.length]); // Intentionally exclude currentHorizontalPage to prevent auto-scrolling while simply reading
 
   // B. When scrolling IN Vertical mode, update the current page index
@@ -127,7 +159,7 @@ const MangaReader = () => {
           }
         });
       },
-      { 
+      {
         rootMargin: '-40% 0px -40% 0px', // Trigger only when image is in the middle 20% of screen
         threshold: 0
       }
@@ -159,7 +191,7 @@ const MangaReader = () => {
     window.addEventListener('scroll', resetUITimer);
     window.addEventListener('click', resetUITimer);
     window.addEventListener('keydown', resetUITimer);
-    
+
     resetUITimer();
 
     return () => {
@@ -204,6 +236,7 @@ const MangaReader = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readingMode, currentHorizontalPage, pages.length, currentChapterInfo]);
 
 
@@ -319,7 +352,7 @@ const MangaReader = () => {
         className={`w-full mx-auto bg-black transition-all duration-300 ease-out outline-none
           ${readingMode === 'horizontal' ? 'h-screen flex items-center justify-center' : 'min-h-screen pt-16'}`}
         onClick={() => {
-           // Optional: Click logic here
+          // Optional: Click logic here
         }}
       >
         {loading ? (
@@ -333,13 +366,13 @@ const MangaReader = () => {
             {readingMode === 'vertical' && (
               <div className="flex flex-col items-center w-full">
                 {pages.map((url, i) => (
-                  <img 
+                  <img
                     key={i}
                     // Attach Ref and Dataset Index for syncing
                     ref={(el) => (imageRefs.current[i] = el)}
                     data-index={i}
-                    src={url} 
-                    alt={`Page ${i + 1}`} 
+                    src={url}
+                    alt={`Page ${i + 1}`}
                     loading="lazy"
                     className={`block mb-1 ${getImageStyle()}`}
                   />
@@ -369,7 +402,7 @@ const MangaReader = () => {
                   alt={`Page ${currentHorizontalPage + 1}`}
                   className={`shadow-2xl transition-all duration-200 ${getImageStyle()}`}
                 />
-                
+
                 {/* Page Indicator */}
                 <div className={`absolute bottom-8 bg-black/70 px-4 py-1 rounded-full text-xs font-mono text-gray-300 pointer-events-none transition-opacity duration-300 ${showUI ? 'opacity-100' : 'opacity-0'}`}>
                   Page {currentHorizontalPage + 1} / {pages.length}

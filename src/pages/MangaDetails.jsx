@@ -21,9 +21,11 @@ const MangaDetails = () => {
   const [userRating, setUserRating] = useState(0);
   const [userCurrentChapter, setUserCurrentChapter] = useState(0);
 
-  // --- REVIEW STATES ---
+  // REVIEW STATES
   const [commentText, setCommentText] = useState("");
-  const [reviews, setReviews] = useState([]);
+
+  // RATING STATISTICS STATES
+  const [ratingStats, setRatingStats] = useState(null);
 
   // Input State
   const [inputRating, setInputRating] = useState(0);
@@ -42,6 +44,20 @@ const MangaDetails = () => {
         if (!response.ok) throw new Error('Failed to load manga details');
         const data = await response.json();
         setManga(data);
+
+        // Extract rating statistics if available
+        if (data.rating_stats) {
+          setRatingStats(data.rating_stats);
+        } else {
+          // Initialize with zero stats if backend doesn't provide them (5-star system)
+          setRatingStats({
+            average: 0,
+            total_count: 0,
+            distribution: {
+              5: 0, 4: 0, 3: 0, 2: 0, 1: 0
+            }
+          });
+        }
 
         // // 2. Fetch Chapters using mangadex_id
         if (data.mangadex_id) {
@@ -81,16 +97,6 @@ const MangaDetails = () => {
           }
 
           // Add user's rating to reviews list
-          if (data.user_rating) {
-            const userReview = {
-              id: 'user-rating',
-              user: "You",
-              rating: data.user_rating,
-              content: null, // API doesn't return text review yet
-              date: data.updated_at ? new Date(data.updated_at).toLocaleDateString() : "Recently"
-            };
-            setReviews([userReview]);
-          }
         }
       } catch (err) {
         console.log('No user rating found');
@@ -216,6 +222,26 @@ const MangaDetails = () => {
     if (inputRating > 0) {
       setUserRating(inputRating);
 
+      // Update rating statistics locally
+      setRatingStats(prev => {
+        const newStats = prev || { average: 0, total_count: 0, distribution: {} };
+
+        // Update distribution
+        const newDistribution = { ...newStats.distribution };
+        newDistribution[inputRating] = (newDistribution[inputRating] || 0) + 1;
+
+        // Calculate new average
+        const newTotalCount = newStats.total_count + 1;
+        const oldSumcontrib = (newStats.average || 0) * newStats.total_count;
+        const newAverage = (oldSumcontrib + inputRating) / newTotalCount;
+
+        return {
+          average: parseFloat(newAverage.toFixed(1)),
+          total_count: newTotalCount,
+          distribution: newDistribution
+        };
+      });
+
       // Submit rating to backend
       try {
         await libraryAPI.updateProgress(id, userCurrentChapter, inputRating);
@@ -225,15 +251,6 @@ const MangaDetails = () => {
       }
     }
 
-    const newReview = {
-      id: Date.now(),
-      user: "You",
-      rating: inputRating,
-      content: commentText,
-      date: "Just now"
-    };
-
-    setReviews([newReview, ...reviews]);
     setCommentText("");
     setInputRating(0);
   };
@@ -251,7 +268,7 @@ const MangaDetails = () => {
         await libraryAPI.removeFromLibrary(id);
         setInLibrary(false);
       } else {
-        await libraryAPI.addToLibrary(id, 'reading');
+        await libraryAPI.addToLibrary(id);
         setInLibrary(true);
       }
     } catch (err) {
@@ -537,50 +554,92 @@ const MangaDetails = () => {
                 </div>
               </section>
 
-              {/* Discussion & Rating Section */}
-              <section id="discussion">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                    <MessageCircle className="w-5 h-5 text-indigo-600" />
-                    Community Reviews
-                  </h3>
-                  <span className="text-xs font-bold bg-slate-200 text-slate-600 px-2 py-1 rounded-md">
-                    {reviews.length} Reviews
-                  </span>
+              {/* Rating Section */}
+              <section id="rating">
+                <div className="text-center mb-8">
+                  <h3 className="text-2xl font-bold text-slate-900">Rating</h3>
                 </div>
 
-                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8">
+                  {/* Rating Distribution Bars - Full Width (5-star system) */}
+                  <div className="space-y-2 mb-8">
+                    {[5, 4, 3, 2, 1].map((level) => {
+                      const count = ratingStats?.distribution?.[level] || 0;
+                      const total = ratingStats?.total_count || 1;
+                      const percentage = (count / total) * 100;
+
+                      return (
+                        <div key={level} className="flex items-center gap-3">
+                          <span className="text-sm font-bold text-slate-700 w-6 text-right">{level}</span>
+                          <div className="flex-1 h-4 bg-slate-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-emerald-500 transition-all duration-300"
+                              style={{ width: `${percentage}%` }}
+                            />
+                          </div>
+                          <span className="text-sm font-medium text-slate-600 w-12 text-right">{count}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Aggregate Rating Display - Horizontal Layout */}
+                  <div className="pb-8 border-b border-slate-100">
+                    <div className="flex items-center justify-center gap-4">
+                      {/* Stars on the left (5-star system) */}
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: 5 }, (_, i) => i + 1).map((star) => (
+                          <Star
+                            key={star}
+                            className={`w-5 h-5 ${star <= Math.round(ratingStats?.average || 0)
+                              ? 'fill-amber-400 text-amber-400'
+                              : 'text-slate-300'
+                              }`}
+                          />
+                        ))}
+                      </div>
+
+                      {/* Number on the right */}
+                      <div className="text-4xl font-black text-slate-900">
+                        {ratingStats?.average || '0.0'}
+                      </div>
+                    </div>
+
+                    {/* Rating count below */}
+                    <div className="text-center mt-2">
+                      <div className="text-xs text-slate-500 font-medium">
+                        {ratingStats?.total_count || 0} {ratingStats?.total_count === 1 ? 'rating' : 'ratings'}
+                      </div>
+                    </div>
+                  </div>
 
                   {/* Review Input Box */}
-                  <div className="p-6 bg-slate-50 border-b border-slate-100">
+                  <div className="border-t border-slate-100 pt-8">
+                    <h4 className="text-lg font-bold text-slate-900 mb-4">Write a Review</h4>
                     <div className="flex gap-4">
                       <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center font-bold text-indigo-600 flex-shrink-0">
                         U
                       </div>
                       <div className="flex-1 relative">
-
-                        {/* 10-STAR RATING SELECTOR */}
+                        {/* 5-STAR RATING SELECTOR */}
                         <div className="flex items-center gap-2 mb-3">
                           <span className="text-xs font-bold text-slate-500 uppercase">Rate this:</span>
-                          <div className="flex items-center bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-sm">
-                            {Array.from({ length: 10 }, (_, i) => i + 1).map((star) => (
+                          <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg px-2 py-1">
+                            {Array.from({ length: 5 }, (_, i) => i + 1).map((star) => (
                               <button
                                 key={star}
                                 type="button"
-                                className="cursor-pointer px-[1px] focus:outline-none transition-transform active:scale-95"
+                                className="cursor-pointer px-1 focus:outline-none transition-transform active:scale-95"
                                 onClick={() => setInputRating(star)}
                               >
                                 <Star
-                                  className={`w-4 h-4 transition-colors duration-200 ${inputRating >= star
+                                  className={`w - 5 h - 5 transition - colors duration - 200 ${inputRating >= star
                                     ? 'fill-amber-400 text-amber-400'
                                     : 'text-slate-300'
                                     }`}
                                 />
                               </button>
                             ))}
-                            <span className="ml-2 text-xs font-bold text-slate-600 min-w-[30px]">
-                              {inputRating > 0 ? inputRating : '-'}
-                            </span>
                           </div>
                         </div>
 
@@ -600,51 +659,14 @@ const MangaDetails = () => {
                       </div>
                     </div>
                   </div>
-
-                  {/* Reviews List */}
-                  <div className="divide-y divide-slate-50">
-                    {reviews.length === 0 ? (
-                      <div className="p-10 text-center text-slate-400">
-                        <MessageCircle className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                        <p className="font-medium">No reviews yet.</p>
-                        <p className="text-sm">Be the first to share your thoughts!</p>
-                      </div>
-                    ) : (
-                      reviews.map((review) => (
-                        <div key={review.id} className="p-6 hover:bg-slate-50 transition-colors">
-                          <div className="flex items-center gap-3 mb-2">
-                            <span className="font-bold text-slate-800">{review.user}</span>
-                            {review.rating > 0 && (
-                              <div className="flex items-center gap-1 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded text-xs font-bold text-amber-600">
-                                <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
-                                {review.rating}/10
-                              </div>
-                            )}
-                            <span className="text-xs text-slate-400">• {review.date}</span>
-                          </div>
-                          {review.content && (
-                            <p className="text-sm text-slate-600 leading-relaxed">{review.content}</p>
-                          )}
-                        </div>
-                      ))
-                    )}
-
-                    {reviews.length > 0 && (
-                      <div className="p-4 text-center">
-                        <button className="text-sm font-bold text-indigo-600 hover:text-indigo-700">
-                          Load More Reviews
-                        </button>
-                      </div>
-                    )}
-                  </div>
                 </div>
               </section>
 
             </div>
-          </div>
-        </div>
-      </div>
-    </div>
+          </div >
+        </div >
+      </div >
+    </div >
   );
 };
 

@@ -56,14 +56,17 @@ export const libraryAPI = {
   getLibrary: () =>
     axiosInstance.get('/users/library'),
 
-  addToLibrary: (mangaId, status = 'reading') =>
-    axiosInstance.post('/users/library', { manga_id: mangaId, status }),
+  addToLibrary: (mangaId) =>
+    axiosInstance.post('/users/library', { manga_id: mangaId }),
 
   removeFromLibrary: (mangaId) =>
     axiosInstance.delete(`/users/library/${mangaId}`),
 
   updateProgress: (mangaId, currentChapter, userRating = null) => {
-    const payload = { manga_id: mangaId, current_chapter: currentChapter };
+    const payload = {
+      manga_id: String(mangaId),
+      current_chapter: Math.ceil(currentChapter)  // Backend expects int, round up (0.01→1)
+    };
     if (userRating !== null) {
       payload.user_rating = userRating;
     }

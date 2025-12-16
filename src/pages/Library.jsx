@@ -8,35 +8,13 @@ const Library = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [chaptersCache, setChaptersCache] = useState({}); // Cache chapters by mangadex_id
-  const [loadingChapters, setLoadingChapters] = useState({}); // Track loading state
   const [removingManga, setRemovingManga] = useState(null); // Track which manga is being removed
-  const [mangaDetailsCache, setMangaDetailsCache] = useState({}); // Cache fresh manga details by ID
-  const [enriching, setEnriching] = useState(false); // Track when enriching with fresh API data
   const navigate = useNavigate();
 
-  // Fetch fresh manga details from API to get up-to-date info
-  const fetchMangaDetails = useCallback(async (mangaId) => {
-    try {
-      const response = await fetch(`http://localhost:8080/manga/info/${mangaId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setMangaDetailsCache(prev => ({ ...prev, [mangaId]: data }));
-        return data;
-      }
-    } catch (err) {
-      console.error(`Failed to fetch manga details for ID ${mangaId}:`, err);
-    }
-    return null;
-  }, []); // Empty deps - stable function reference
+
 
   const fetchChapters = useCallback(async (mangadexId) => {
     try {
-      setLoadingChapters(prev => {
-        // Skip if already loading
-        if (prev[mangadexId]) return prev;
-        return { ...prev, [mangadexId]: true };
-      });
-
       const response = await fetch(`http://localhost:8080/manga/chapters/${mangadexId}?language=en&limit=100`);
 
       if (response.ok) {
@@ -49,8 +27,6 @@ const Library = () => {
       }
     } catch (err) {
       console.error('Failed to fetch chapters:', err);
-    } finally {
-      setLoadingChapters(prev => ({ ...prev, [mangadexId]: false }));
     }
     return null;
   }, []); // Empty deps - stable function reference
@@ -67,7 +43,7 @@ const Library = () => {
       try {
         setLoading(true);
 
-        // Step 1: Fetch library metadata from database (IDs, progress, status)
+        // ✅ OPTIMIZED: Single API call - use data from /users/library only
         const response = await libraryAPI.getLibrary();
         const libraryData = response.data || {};
         const allItems = [
@@ -78,41 +54,19 @@ const Library = () => {
           ...(libraryData.dropped || [])
         ];
 
+        // ✅ No extra API calls! Just use the data we already have
+        setLibrary(allItems);
+        setLoading(false);
 
-        // Step 2: Enrich each manga with fresh API data (prioritize external APIs)
-        const enrichmentPromises = allItems.map(async (item) => {
+        // Fetch chapters for items with reading progress
+        allItems.forEach((item) => {
           const manga = item.manga || item;
-          if (!manga.id) return item;
+          const hasProgress = (item.current_chapter || 0) > 0;
 
-          try {
-            // Try to fetch fresh data from external API first
-            const freshDetails = await fetchMangaDetails(manga.id);
-
-            // If we got fresh details with mangadex_id, fetch chapters
-            if (freshDetails?.mangadex_id) {
-              await fetchChapters(freshDetails.mangadex_id);
-            }
-
-            // Return enriched item (state will be updated via cache)
-            return { ...item, manga: { ...manga, ...freshDetails } };
-          } catch (err) {
-            console.error(`Failed to enrich manga ${manga.id}:`, err);
-            // Fallback: keep database data
-            return item;
+          if (hasProgress && manga.mangadex_id && !chaptersCache[manga.mangadex_id]) {
+            fetchChapters(manga.mangadex_id);
           }
         });
-
-        // Step 3: Wait for all enrichment to complete
-        const enrichedItems = await Promise.allSettled(enrichmentPromises);
-
-        // Update library with enriched data (single update, no flicker)
-        const finalLibrary = enrichedItems.map((result, index) =>
-          result.status === 'fulfilled' ? result.value : allItems[index]
-        );
-
-        setLibrary(finalLibrary);
-        setLoading(false);
-        setEnriching(false);
 
       } catch (err) {
         console.error('Library fetch error:', err);
@@ -127,7 +81,8 @@ const Library = () => {
     };
 
     fetchLibrary();
-  }, [navigate, fetchMangaDetails, fetchChapters]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigate]); // fetchChapters is stable (useCallback), chaptersCache updates trigger re-render via setState
 
   const getStatusColor = (status) => {
     switch (status?.toLowerCase()) {
@@ -171,35 +126,17 @@ const Library = () => {
     }
   };
 
-  // Helper function to get total chapters - prioritizes external API data
+  // Helper function to get total chapters
   const formatTotalChapters = (manga) => {
     // Priority 1: MangaDex chapters API (most accurate, real-time)
     if (manga.mangadex_id && chaptersCache[manga.mangadex_id]) {
-      return chaptersCache[manga.mangadex_id].length;
+      const count = chaptersCache[manga.mangadex_id].length;
+      return count;
     }
 
-    // Priority 2: Fresh manga details from API cache
-    const freshData = mangaDetailsCache[manga.id];
-    if (freshData?.mangadex_id && chaptersCache[freshData.mangadex_id]) {
-      return chaptersCache[freshData.mangadex_id].length;
-    }
-
-    // Priority 3: Manga details API fields (from /manga/info endpoint)
-    const apiData = freshData || manga;
-    const apiFields = ['total_chapters', 'num_chapters', 'chapters'];
-    for (const field of apiFields) {
-      const value = apiData[field];
-      if (value && value !== 'unknown' && value !== 0) {
-        const numValue = typeof value === 'number' ? value : parseInt(value);
-        if (!isNaN(numValue) && numValue > 0) {
-          return numValue;
-        }
-      }
-    }
-
-    // Priority 4: Database cached fields (fallback only)
-    const dbFields = ['total_chapters', 'num_chapters', 'chapters'];
-    for (const field of dbFields) {
+    // Priority 2: Manga data from /users/library response
+    const fields = ['total_chapters', 'num_chapters', 'chapters'];
+    for (const field of fields) {
       const value = manga[field];
       if (value && value !== 'unknown' && value !== 0) {
         const numValue = typeof value === 'number' ? value : parseInt(value);
@@ -213,10 +150,57 @@ const Library = () => {
     return '?';
   };
 
+  // Helper function to get smart chapter progress display
+  const getChapterProgress = (item, manga) => {
+    const currentChapterNum = item.current_chapter || 0;
+
+    // If no progress
+    if (currentChapterNum === 0) {
+      const totalChapters = formatTotalChapters(manga);
+      return {
+        current: 'Chapter 0',
+        total: totalChapters !== '?' ? totalChapters : null,
+        showTotal: totalChapters !== '?'
+      };
+    }
+
+    // If chapters are cached, show actual chapter numbers
+    if (manga.mangadex_id && chaptersCache[manga.mangadex_id]) {
+      const chapters = chaptersCache[manga.mangadex_id];
+      const lastChapter = chapters[chapters.length - 1];
+
+      return {
+        current: `Chapter ${currentChapterNum}`,
+        total: lastChapter.chapter,
+        showTotal: true
+      };
+    }
+
+    // Fallback: Show chapter number with count if available
+    const totalChapters = formatTotalChapters(manga);
+    return {
+      current: `Chapter ${currentChapterNum}`,
+      total: totalChapters,
+      showTotal: true  // Always show total, even if unknown
+    };
+  };
+
 
   const handleContinueReading = async (manga, currentChapter) => {
-    // Get mangadex_id from either the manga object or the cache
-    const mangadexId = manga.mangadex_id || mangaDetailsCache[manga.id]?.mangadex_id;
+    let mangadexId = manga.mangadex_id;
+
+    // WORKAROUND: Backend hasn't deployed fix yet - fetch mangadex_id if missing
+    if (!mangadexId) {
+      try {
+        const response = await fetch(`http://localhost:8080/manga/info/${manga.id}`);
+        if (response.ok) {
+          const data = await response.json();
+          mangadexId = data.mangadex_id;
+        }
+      } catch (err) {
+        console.error('Failed to fetch manga details:', err);
+      }
+    }
 
     if (!mangadexId) {
       console.warn('⚠️ MangaDex ID not available, redirecting to details page');
@@ -224,13 +208,17 @@ const Library = () => {
       return;
     }
 
-    // Get chapters from cache
-    const chapters = chaptersCache[mangadexId];
-
+    // LAZY LOAD: Only fetch chapters when user clicks "Continue Reading"
+    let chapters = chaptersCache[mangadexId];
     if (!chapters || chapters.length === 0) {
-      console.warn('⚠️ Chapters not loaded yet, redirecting to details page');
-      navigate(`/manga/${manga.id}`);
-      return;
+      console.log('📥 Fetching chapters for', manga.title);
+      chapters = await fetchChapters(mangadexId);
+
+      if (!chapters || chapters.length === 0) {
+        console.warn('⚠️ No chapters found, redirecting to details page');
+        navigate(`/manga/${manga.id}`);
+        return;
+      }
     }
 
     // Find the chapter that matches the current chapter number
@@ -240,7 +228,7 @@ const Library = () => {
 
     if (targetChapter) {
       // Navigate to the specific chapter in reader
-      console.log(`� Continue reading: Chapter ${currentChapter}`);
+      console.log(`📖 Continue reading: Chapter ${currentChapter}`);
       sessionStorage.setItem(`manga_${mangadexId}`, JSON.stringify({
         id: manga.id,
         mangadex_id: mangadexId
@@ -262,8 +250,20 @@ const Library = () => {
   };
 
   const handleStartFromBeginning = async (manga) => {
-    // Get mangadex_id from either the manga object or the cache
-    const mangadexId = manga.mangadex_id || mangaDetailsCache[manga.id]?.mangadex_id;
+    let mangadexId = manga.mangadex_id;
+
+    // WORKAROUND: Backend hasn't deployed fix yet - fetch mangadex_id if missing
+    if (!mangadexId) {
+      try {
+        const response = await fetch(`http://localhost:8080/manga/info/${manga.id}`);
+        if (response.ok) {
+          const data = await response.json();
+          mangadexId = data.mangadex_id;
+        }
+      } catch (err) {
+        console.error('Failed to fetch manga details:', err);
+      }
+    }
 
     if (!mangadexId) {
       console.warn('⚠️ MangaDex ID not available, redirecting to details page');
@@ -271,18 +271,22 @@ const Library = () => {
       return;
     }
 
-    // Get chapters from cache
-    const chapters = chaptersCache[mangadexId];
-
+    // ✅ LAZY LOAD: Only fetch chapters when user clicks "Start Reading"
+    let chapters = chaptersCache[mangadexId];
     if (!chapters || chapters.length === 0) {
-      console.warn('⚠️ Chapters not loaded yet, redirecting to details page');
-      navigate(`/manga/${manga.id}`);
-      return;
+      console.log('📥 Fetching chapters for', manga.title);
+      chapters = await fetchChapters(mangadexId);
+
+      if (!chapters || chapters.length === 0) {
+        console.warn('⚠️ No chapters found, redirecting to details page');
+        navigate(`/manga/${manga.id}`);
+        return;
+      }
     }
 
     // Navigate to first chapter
     const firstChapter = chapters[0];
-    console.log(`� Starting from beginning: Chapter ${firstChapter.chapter}`);
+    console.log(`📚 Starting from beginning: Chapter ${firstChapter.chapter}`);
     sessionStorage.setItem(`manga_${mangadexId}`, JSON.stringify({
       id: manga.id,
       mangadex_id: mangadexId
@@ -349,12 +353,6 @@ const Library = () => {
                 <p className="text-slate-500 font-medium">
                   {library.length === 0 ? 'No manga in your library yet' : `${library.length} manga in your collection`}
                 </p>
-                {enriching && (
-                  <span className="flex items-center gap-1.5 text-xs text-indigo-600 font-medium">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    Updating...
-                  </span>
-                )}
               </div>
             </div>
           </div>
@@ -505,7 +503,12 @@ const Library = () => {
                     <div className="flex items-center justify-between mt-2 text-sm text-slate-500 font-medium">
                       <span className="flex items-center gap-1.5">
                         <Book className="w-4 h-4 text-indigo-400" />
-                        {item.current_chapter || 0}/{formatTotalChapters(manga)}
+                        {(() => {
+                          const progress = getChapterProgress(item, manga);
+                          return progress.showTotal
+                            ? `${progress.current} / ${progress.total}`
+                            : progress.current;
+                        })()}
                       </span>
                       <span className="flex items-center gap-1.5 text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full">
                         <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
