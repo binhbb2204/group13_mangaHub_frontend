@@ -4,6 +4,7 @@ import {
   Search, X, ChevronLeft, ChevronRight, ChevronDown,
   Filter, Hash, Check 
 } from 'lucide-react';
+import { buildApiUrl } from '../utils/api';
 
 const GENRES_LIST = [
   "Action", "Adventure", "Comedy", "Drama", "Fantasy", 
@@ -144,7 +145,7 @@ const Manga = () => {
         queryParams.append('limit', currentLimit);
         queryParams.append('page', currentPage);
 
-        const url = `http://localhost:8080/manga/search?${queryParams.toString()}`;
+        const url = buildApiUrl(`/manga/search?${queryParams.toString()}`);
         const response = await fetch(url);
         
         if (!response.ok) throw new Error('Fetch failed');

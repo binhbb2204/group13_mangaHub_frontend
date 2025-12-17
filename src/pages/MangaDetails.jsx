@@ -5,7 +5,7 @@ import {
   Hash, Heart, ArrowLeft, Send,
   MessageCircle, ChevronDown, ChevronUp, Loader2, List
 } from 'lucide-react';
-import { libraryAPI } from '../utils/api';
+import { libraryAPI, buildApiUrl } from '../utils/api';
 
 const MangaDetails = () => {
   const { id } = useParams();
@@ -40,7 +40,7 @@ const MangaDetails = () => {
       try {
         setLoading(true);
         // 1. Fetch Basic Info
-        const response = await fetch(`http://localhost:8080/manga/info/${id}`);
+        const response = await fetch(buildApiUrl(`/manga/info/${id}`));
         if (!response.ok) throw new Error('Failed to load manga details');
         const data = await response.json();
         setManga(data);
@@ -61,7 +61,7 @@ const MangaDetails = () => {
 
         // // 2. Fetch Chapters using mangadex_id
         if (data.mangadex_id) {
-          const chResponse = await fetch(`http://localhost:8080/manga/chapters/${data.mangadex_id}?language=en&limit=100`);
+          const chResponse = await fetch(buildApiUrl(`/manga/chapters/${data.mangadex_id}?language=en&limit=100`));
           if (chResponse.ok) {
             const chData = await chResponse.json();
             // // Sort chapters by number
@@ -83,7 +83,7 @@ const MangaDetails = () => {
       if (!token) return;
 
       try {
-        const response = await fetch(`http://localhost:8080/users/progress/${id}`, {
+        const response = await fetch(buildApiUrl(`/users/progress/${id}`), {
           headers: { 'Authorization': `Bearer ${token}` }
         });
 
@@ -206,7 +206,7 @@ const MangaDetails = () => {
   };
 
   const handleJoinChat = () => {
-    navigate(`/chat/${id}`);
+    navigate(`/chat/manga-${id}`);
   };
 
   const scrollToReviews = () => {

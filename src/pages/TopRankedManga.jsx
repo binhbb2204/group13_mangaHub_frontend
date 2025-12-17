@@ -4,6 +4,7 @@ import {
   Trophy, Star, BookOpen, 
   Loader2, ArrowLeft, ChevronLeft, ChevronRight, Hash 
 } from 'lucide-react';
+import { buildApiUrl } from '../utils/api';
 
 const TopRankedManga = () => {
   const [mangaList, setMangaList] = useState([]);
@@ -67,7 +68,7 @@ const TopRankedManga = () => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const response = await fetch(`http://localhost:8080/manga/ranking?type=${currentType}&limit=${currentLimit}&page=${currentPage}`);
+        const response = await fetch(buildApiUrl(`/manga/ranking?type=${currentType}&limit=${currentLimit}&page=${currentPage}`));
         
         if (!response.ok) throw new Error('Failed to fetch');
         

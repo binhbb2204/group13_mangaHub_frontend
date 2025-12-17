@@ -4,7 +4,7 @@ import {
   Menu, X, BookOpen, MessageCircle, Settings, LogOut, 
   User, ChevronDown 
 } from 'lucide-react';
-import axios from 'axios';
+import axiosInstance from '../../utils/api';
 
 const Header = () => {
   // 1. ALL HOOKS MUST BE DECLARED FIRST
@@ -65,9 +65,7 @@ const Header = () => {
   // Handle logout
   const handleLogout = async () => {
     try {
-      await axios.post('http://localhost:8080/auth/logout', {}, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      });
+      await axiosInstance.post('/auth/logout');
     } catch (err) {
       console.error('Logout error:', err);
     } finally {

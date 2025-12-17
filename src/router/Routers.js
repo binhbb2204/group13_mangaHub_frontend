@@ -10,7 +10,7 @@ import Chat from '../pages/Chat'
 import MangaDetails from './../pages/MangaDetails'
 import TopRankedManga from '../pages/TopRankedManga'
 import Settings from '../pages/Settings'
-import ChatDetails from '../pages/ChatDetails'
+import ChatDetails from '../pages/ChatRoom'
 import MangaReader from '../pages/MangaReader'
 const Routers = () => {
   return (

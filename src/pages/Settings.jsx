@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import axios from 'axios';
+import axiosInstance from '../utils/api';
 import { 
   Lock, ShieldCheck, Save, AlertCircle, CheckCircle2, 
   LayoutGrid, Eye, EyeOff, Loader2, User 
@@ -53,13 +53,11 @@ const Settings = () => {
 
   // API Request Helper
   const apiCall = async (endpoint, payload) => {
-    const token = localStorage.getItem('token');
-    return axios.post(
-      `http://localhost:8080/auth/${endpoint}`, 
+    return axiosInstance.post(
+      `/auth/${endpoint}`, 
       payload,
       {
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       }

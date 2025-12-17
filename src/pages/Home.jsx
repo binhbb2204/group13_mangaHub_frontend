@@ -4,6 +4,7 @@ import {
   Loader2, Trophy, Book
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { buildApiUrl } from '../utils/api';
 
 const Home = () => {
   const [data, setData] = useState(null);
@@ -28,7 +29,7 @@ const Home = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await fetch('http://localhost:8080/manga/featured');
+        const response = await fetch(buildApiUrl('/manga/featured'));
         if (!response.ok) throw new Error('Failed to fetch manga data');
         const result = await response.json();
         setData(result);

@@ -1,10 +1,40 @@
 import axios from 'axios';
 
-// API base URL
-// const API_BASE_URL = 'http://localhost:8081';
-const API_BASE_URL = 'http://localhost:8080';
+// Resolve API base URL dynamically
+const normalizeBaseUrl = (url) => (url?.endsWith('/') ? url.slice(0, -1) : url);
 
-// Create axios instance with default config
+const getEnvBaseUrl = () => normalizeBaseUrl(process.env.REACT_APP_API_BASE_URL);
+
+const getWindowBaseUrl = () => {
+  if (typeof window === 'undefined') return null;
+  const { protocol, hostname } = window.location;
+  const port = process.env.REACT_APP_API_PORT || '8080';
+  const safeProtocol = protocol === 'https:' ? 'https:' : 'http:';
+  return `${safeProtocol}//${hostname}:${port}`;
+};
+
+export const API_BASE_URL =
+  getEnvBaseUrl() ||
+  normalizeBaseUrl(getWindowBaseUrl()) ||
+  'http://localhost:8080';
+
+export const buildApiUrl = (path = '') => {
+  const suffix = path.startsWith('/') ? path : `/${path}`;
+  return `${API_BASE_URL}${suffix}`;
+};
+
+export const buildWebSocketUrl = (path = '') => {
+  if (typeof window === 'undefined') {
+    return 'ws://localhost:8080';
+  }
+  const { hostname } = window.location;
+  const port = process.env.REACT_APP_API_PORT || '8080';
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const suffix = path.startsWith('/') ? path : `/${path}`;
+  return `${protocol}//${hostname}:${port}${suffix}`;
+};
+
+// Create axios instance
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -12,7 +42,7 @@ const axiosInstance = axios.create({
   },
 });
 
-// Add request interceptor to include token
+// Request interceptor: Add token
 axiosInstance.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
@@ -26,12 +56,14 @@ axiosInstance.interceptors.request.use(
   }
 );
 
-// Add response interceptor for error handling
+// Response interceptor: Handle 401
 axiosInstance.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      // Token expired or invalid
+    const originalRequest = error.config;
+    
+    // Only redirect if it's 401 AND NOT a login attempt
+    if (error.response?.status === 401 && !originalRequest.url.includes('/auth/login')) {
       localStorage.clear();
       window.location.href = '/login';
     }
@@ -65,7 +97,7 @@ export const libraryAPI = {
   updateProgress: (mangaId, currentChapter, userRating = null) => {
     const payload = {
       manga_id: String(mangaId),
-      current_chapter: Math.ceil(currentChapter)  // Backend expects int, round up (0.01→1)
+      current_chapter: Math.ceil(currentChapter)
     };
     if (userRating !== null) {
       payload.user_rating = userRating;

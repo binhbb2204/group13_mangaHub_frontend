@@ -5,7 +5,7 @@ import {
   Settings, Maximize, Minimize, MoveVertical, MoveHorizontal,
   AlignJustify, BookOpen
 } from 'lucide-react';
-import { libraryAPI } from '../utils/api';
+import { libraryAPI, buildApiUrl } from '../utils/api';
 
 const MangaReader = () => {
   const { mangadexId, chapterId } = useParams();
@@ -36,7 +36,7 @@ const MangaReader = () => {
     const fetchChapterList = async () => {
       if (!mangadexId) return;
       try {
-        const response = await fetch(`http://localhost:8080/manga/chapters/${mangadexId}?language=en&limit=100`);
+        const response = await fetch(buildApiUrl(`/manga/chapters/${mangadexId}?language=en&limit=100`));
         const data = await response.json();
         const sorted = (data.chapters || []).sort((a, b) => parseFloat(a.chapter) - parseFloat(b.chapter));
         setChapters(sorted);
@@ -70,7 +70,7 @@ const MangaReader = () => {
         setPages([]);
         setCurrentHorizontalPage(0);
 
-        const response = await fetch(`http://localhost:8080/manga/chapter/${chapterId}/pages`);
+        const response = await fetch(buildApiUrl(`/manga/chapter/${chapterId}/pages`));
         const data = await response.json();
         if (data.page_urls) setPages(data.page_urls);
 

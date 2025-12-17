@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Book, Star, Loader2, BookOpen, Heart, PlayCircle, RotateCcw } from 'lucide-react';
-import { libraryAPI } from '../utils/api';
+import { libraryAPI, buildApiUrl } from '../utils/api';
 
 const Library = () => {
   const [library, setLibrary] = useState([]);
@@ -15,7 +15,7 @@ const Library = () => {
 
   const fetchChapters = useCallback(async (mangadexId) => {
     try {
-      const response = await fetch(`http://localhost:8080/manga/chapters/${mangadexId}?language=en&limit=100`);
+      const response = await fetch(buildApiUrl(`/manga/chapters/${mangadexId}?language=en&limit=100`));
 
       if (response.ok) {
         const data = await response.json();
@@ -192,7 +192,7 @@ const Library = () => {
     // WORKAROUND: Backend hasn't deployed fix yet - fetch mangadex_id if missing
     if (!mangadexId) {
       try {
-        const response = await fetch(`http://localhost:8080/manga/info/${manga.id}`);
+        const response = await fetch(buildApiUrl(`/manga/info/${manga.id}`));
         if (response.ok) {
           const data = await response.json();
           mangadexId = data.mangadex_id;
@@ -255,7 +255,7 @@ const Library = () => {
     // WORKAROUND: Backend hasn't deployed fix yet - fetch mangadex_id if missing
     if (!mangadexId) {
       try {
-        const response = await fetch(`http://localhost:8080/manga/info/${manga.id}`);
+        const response = await fetch(buildApiUrl(`/manga/info/${manga.id}`));
         if (response.ok) {
           const data = await response.json();
           mangadexId = data.mangadex_id;
