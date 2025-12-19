@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axiosInstance from '../utils/api';
 import { 
   Lock, ShieldCheck, Save, AlertCircle, CheckCircle2, 
-  LayoutGrid, Eye, EyeOff, Loader2, User 
+  LayoutGrid, Eye, EyeOff, Loader2, User, Wifi, WifiOff,
+  Server, Activity, BarChart3, Radio, MessageSquare
 } from 'lucide-react';
 
 const Settings = () => {
@@ -11,6 +12,12 @@ const Settings = () => {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState({ type: '', message: '' });
   const [showPassword, setShowPassword] = useState({}); 
+
+  // Sync State
+  const [syncStatus, setSyncStatus] = useState(null);
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [connectionDetails, setConnectionDetails] = useState(null);
 
   // Store original values to detect changes
   const [originalUser, setOriginalUser] = useState({
@@ -23,16 +30,110 @@ const Settings = () => {
     username: originalUser.username,
     email: originalUser.email,
     current_password: '', 
-    new_password: '',     
+    new_password: '',      
     confirm_password: ''  
   });
 
-  // Change Detection Logic
   const hasChanges = 
     formData.username !== originalUser.username || 
     formData.email !== originalUser.email;
 
-  // Input Handlers
+  // Fetch Sync Status
+  const fetchSyncStatus = async () => {
+    try {
+      setSyncLoading(true);
+      const response = await axiosInstance.get('/sync/status');
+      setSyncStatus(response.data);
+      
+      if (response.data?.payload?.connection_status === 'connected' && !connectionDetails) {
+        setConnectionDetails({
+          session_id: response.data.payload.session_id,
+          server_address: response.data.payload.server_address,
+          connected_at: new Date().toISOString(),
+          device_name: window.location.hostname || 'web-client',
+          device_type: 'web',
+          username: localStorage.getItem('username') || 'User'
+        });
+      }
+    } catch (err) {
+      setSyncStatus({
+        type: 'status_response',
+        payload: { connection_status: 'disconnected' }
+      });
+      setConnectionDetails(null);
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
+  // Connect to Sync Server
+  const handleConnectSync = async () => {
+    try {
+      setConnecting(true);
+      setStatus({ type: '', message: '' });
+      
+      const hostname = window.location.hostname || 'web-client';
+      const response = await axiosInstance.post('/sync/connect', {
+        device_type: 'web',
+        device_name: hostname
+      });
+      
+      setConnectionDetails({
+        session_id: response.data.session_id,
+        server_address: response.data.server_address,
+        connected_at: response.data.connected_at || new Date().toISOString(),
+        device_name: hostname,
+        device_type: 'web',
+        username: localStorage.getItem('username') || 'User'
+      });
+      
+      setStatus({ type: 'success', message: 'Connected to sync server successfully!' });
+      setTimeout(() => fetchSyncStatus(), 500);
+    } catch (err) {
+      setStatus({ 
+        type: 'error', 
+        message: err.response?.data?.error || 'Failed to connect' 
+      });
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  // AUTO-CONNECT LOGIC
+  useEffect(() => {
+    if (activeTab === 'sync') {
+      fetchSyncStatus();
+      // Auto-trigger connection if not connected and not currently connecting
+      if (!connectionDetails && !connecting) {
+        handleConnectSync();
+      }
+
+      const interval = setInterval(fetchSyncStatus, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [activeTab]);
+
+  const handleDisconnectSync = async () => {
+    try {
+      setConnecting(true);
+      await axiosInstance.post('/sync/disconnect');
+      setConnectionDetails(null);
+      setSyncStatus(null);
+      setStatus({ type: 'success', message: 'Disconnected' });
+      setTimeout(() => fetchSyncStatus(), 500);
+    } catch (err) {
+      setStatus({ type: 'error', message: 'Failed to disconnect' });
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return 'N/A';
+    const date = new Date(timestamp);
+    return date.toLocaleString();
+  };
+
   const togglePasswordVisibility = (field) => {
     setShowPassword(prev => ({ ...prev, [field]: !prev[field] }));
   };
@@ -51,29 +152,19 @@ const Settings = () => {
     setStatus({ type: '', message: '' });
   };
 
-  // API Request Helper
   const apiCall = async (endpoint, payload) => {
-    return axiosInstance.post(
-      `/auth/${endpoint}`, 
-      payload,
-      {
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      }
-    );
+    return axiosInstance.post(`/auth/${endpoint}`, payload, {
+      headers: { 'Content-Type': 'application/json' }
+    });
   };
 
-  // Profile Update Handler
   const handleSaveProfile = async () => {
     setLoading(true);
     setStatus({ type: '', message: '' });
-    
     let successCount = 0;
     let errors = [];
 
     try {
-      // Update Username
       if (formData.username !== originalUser.username) {
         try {
           const res = await apiCall('update-username', { new_username: formData.username });
@@ -83,11 +174,10 @@ const Settings = () => {
             successCount++;
           }
         } catch (err) {
-          errors.push(err.response?.data?.error || "Failed to update username");
+          errors.push("Failed to update username");
         }
       }
 
-      // Update Email
       if (formData.email !== originalUser.email) {
         try {
           const res = await apiCall('update-email', { new_email: formData.email });
@@ -97,33 +187,27 @@ const Settings = () => {
             successCount++;
           }
         } catch (err) {
-          errors.push(err.response?.data?.error || "Failed to update email");
+          errors.push("Failed to update email");
         }
       }
 
-      // Final Status Check
       if (errors.length > 0) {
         setStatus({ type: 'error', message: errors.join(', ') });
       } else if (successCount > 0) {
-        setStatus({ type: 'success', message: 'Profile updated successfully!' });
+        setStatus({ type: 'success', message: 'Profile updated!' });
         window.dispatchEvent(new Event("storage"));
-      } else {
-        setStatus({ type: '', message: 'No changes to save.' });
       }
-
     } catch (err) {
-      console.error(err);
-      setStatus({ type: 'error', message: "An unexpected error occurred." });
+      setStatus({ type: 'error', message: "An error occurred." });
     } finally {
       setLoading(false);
     }
   };
 
-  // Password Update Handler
   const handleUpdatePassword = async (e) => {
     e.preventDefault();
     if (formData.new_password !== formData.confirm_password) {
-      setStatus({ type: 'error', message: "New passwords do not match." });
+      setStatus({ type: 'error', message: "Passwords do not match." });
       return;
     }
     setLoading(true);
@@ -132,223 +216,113 @@ const Settings = () => {
         current_password: formData.current_password, 
         new_password: formData.new_password 
       });
-      setStatus({ type: 'success', message: 'Password changed successfully!' });
+      setStatus({ type: 'success', message: 'Password changed!' });
       setFormData(prev => ({ ...prev, current_password: '', new_password: '', confirm_password: '' }));
     } catch (err) {
-      setStatus({ type: 'error', message: err.response?.data?.error || "Failed to change password" });
+      setStatus({ type: 'error', message: "Failed to change password" });
     } finally {
       setLoading(false);
     }
   };
 
+  const isConnected = connectionDetails !== null;
+
   return (
     <div className="min-h-screen bg-gray-50 pt-24 pb-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-5xl mx-auto">
-        
-        {/* Page Title */}
         <div className="mb-8">
           <h1 className="text-3xl font-black text-gray-900">Settings</h1>
-          <p className="mt-2 text-gray-600">Manage your profile and security preferences.</p>
         </div>
 
         <div className="grid gap-8 md:grid-cols-4">
-          
-          {/* Navigation Sidebar */}
           <div className="md:col-span-1 space-y-2">
-            <button 
-              onClick={() => setActiveTab('account')}
-              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-bold ${
-                activeTab === 'account' 
-                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' 
-                  : 'bg-white text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <LayoutGrid size={20} />
-              <span>Account</span>
-            </button>
-            <button 
-              onClick={() => setActiveTab('security')}
-              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-bold ${
-                activeTab === 'security' 
-                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' 
-                  : 'bg-white text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <ShieldCheck size={20} />
-              <span>Security</span>
-            </button>
+            <button onClick={() => setActiveTab('account')} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-bold ${activeTab === 'account' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-gray-600'}`}><LayoutGrid size={20} /><span>Account</span></button>
+            <button onClick={() => setActiveTab('security')} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-bold ${activeTab === 'security' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-gray-600'}`}><ShieldCheck size={20} /><span>Security</span></button>
+            <button onClick={() => setActiveTab('sync')} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl font-bold ${activeTab === 'sync' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-gray-600'}`}><Wifi size={20} /><span>Sync</span></button>
           </div>
 
-          {/* Main Content Area */}
           <div className="md:col-span-3 space-y-6">
-            
-            {/* Status Notifications */}
             {status.message && (
-              <div className={`p-4 rounded-xl flex items-start gap-3 animate-slide-in ${
-                status.type === 'success' 
-                  ? 'bg-green-50 text-green-700 border border-green-200' 
-                  : 'bg-red-50 text-red-700 border border-red-200'
-              }`}>
-                {status.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
+              <div className={`p-4 rounded-xl flex items-start gap-3 ${status.type === 'success' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'} border`}>
                 <p className="font-medium text-sm">{status.message}</p>
               </div>
             )}
 
-            {/* Account Settings Tab */}
             {activeTab === 'account' && (
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
-                
-                {/* Profile Header */}
-                <div className="flex items-center gap-3 mb-6 pb-6 border-b border-gray-100">
-                  <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
-                    <User size={20} />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-gray-900">Profile Information</h2>
-                    <p className="text-sm text-gray-500">Update your account details and public profile</p>
-                  </div>
-                </div>
-
-                {/* Profile Form Fields */}
+              <div className="bg-white rounded-2xl border p-8 shadow-sm">
+                <div className="flex items-center gap-3 mb-6 pb-6 border-b"><User size={20} /><h2 className="text-lg font-bold">Profile</h2></div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  
-                  {/* Display Name Input */}
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2">
-                      Display Name
-                    </label>
-                    <input
-                      type="text"
-                      name="username"
-                      value={formData.username}
-                      onChange={handleChange}
-                      className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-slate-800 font-medium"
-                      placeholder="Enter your username"
-                    />
-                  </div>
-
-                  {/* Email Input */}
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2">
-                      Email Address
-                    </label>
-                    <input
-                      type="email"
-                      name="email"
-                      value={formData.email}
-                      onChange={handleChange}
-                      className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-slate-800 font-medium"
-                      placeholder="Enter your email"
-                    />
-                  </div>
-
+                  <div><label className="block text-sm font-bold mb-2">Name</label><input type="text" name="username" value={formData.username} onChange={handleChange} className="w-full px-4 py-3 border rounded-lg" /></div>
+                  <div><label className="block text-sm font-bold mb-2">Email</label><input type="email" name="email" value={formData.email} onChange={handleChange} className="w-full px-4 py-3 border rounded-lg" /></div>
                 </div>
-
-                {/* Profile Actions */}
-                <div className="mt-8 pt-6 border-t border-gray-100 flex items-center justify-end gap-3">
-                  <button
-                    onClick={handleCancel}
-                    disabled={loading || !hasChanges}
-                    className="px-6 py-2.5 rounded-lg text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSaveProfile}
-                    disabled={loading || !hasChanges}
-                    className="px-6 py-2.5 rounded-lg text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-blue-500/20 flex items-center gap-2"
-                  >
-                    {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-                    Save Changes
-                  </button>
+                <div className="mt-8 pt-6 flex justify-end gap-3">
+                  <button onClick={handleCancel} disabled={loading || !hasChanges} className="px-6 py-2.5 rounded-lg text-sm font-bold bg-slate-100">Cancel</button>
+                  <button onClick={handleSaveProfile} disabled={loading || !hasChanges} className="px-6 py-2.5 rounded-lg text-sm font-bold text-white bg-blue-600 flex items-center gap-2">{loading && <Loader2 className="w-4 h-4 animate-spin" />} Save</button>
                 </div>
               </div>
             )}
 
-            {/* Security Settings Tab */}
             {activeTab === 'security' && (
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
-                {/* Security Header */}
-                <div className="flex items-center gap-3 mb-6 pb-6 border-b border-gray-100">
-                  <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
-                    <Lock size={20} />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-gray-900">Change Password</h2>
-                    <p className="text-sm text-gray-500">Secure your account with a strong password</p>
-                  </div>
-                </div>
-
-                {/* Password Form */}
+              <div className="bg-white rounded-2xl border p-8 shadow-sm">
+                <div className="flex items-center gap-3 mb-6 pb-6 border-b"><Lock size={20} /><h2 className="text-lg font-bold">Security</h2></div>
                 <form onSubmit={handleUpdatePassword} className="space-y-5">
-                  {/* Current Password Field */}
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2">Current Password</label>
-                    <div className="relative">
-                      <input
-                        type={showPassword.current ? "text" : "password"}
-                        name="current_password"
-                        value={formData.current_password}
-                        onChange={handleChange}
-                        className="w-full pl-4 pr-10 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                        placeholder="Current password"
-                      />
-                      <button type="button" onClick={() => togglePasswordVisibility('current')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                        {showPassword.current ? <EyeOff size={18} /> : <Eye size={18} />}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* New Password Fields */}
+                  <input type={showPassword.current ? "text" : "password"} name="current_password" value={formData.current_password} onChange={handleChange} className="w-full px-4 py-3 border rounded-lg" placeholder="Current Password" />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-sm font-bold text-slate-700 mb-2">New Password</label>
-                      <div className="relative">
-                        <input
-                          type={showPassword.new ? "text" : "password"}
-                          name="new_password"
-                          value={formData.new_password}
-                          onChange={handleChange}
-                          className="w-full pl-4 pr-10 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                          placeholder="Min 6 characters"
-                        />
-                        <button type="button" onClick={() => togglePasswordVisibility('new')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                          {showPassword.new ? <EyeOff size={18} /> : <Eye size={18} />}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-bold text-slate-700 mb-2">Confirm Password</label>
-                      <input
-                        type="password"
-                        name="confirm_password"
-                        value={formData.confirm_password}
-                        onChange={handleChange}
-                        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:border-transparent ${
-                          formData.confirm_password && formData.new_password !== formData.confirm_password
-                            ? 'border-red-300 focus:ring-red-500 text-red-900'
-                            : 'border-slate-200 focus:ring-indigo-500'
-                        }`}
-                        placeholder="Repeat new password"
-                      />
-                    </div>
+                    <input type={showPassword.new ? "text" : "password"} name="new_password" value={formData.new_password} onChange={handleChange} className="w-full px-4 py-3 border rounded-lg" placeholder="New Password" />
+                    <input type="password" name="confirm_password" value={formData.confirm_password} onChange={handleChange} className="w-full px-4 py-3 border rounded-lg" placeholder="Confirm Password" />
                   </div>
-
-                  <div className="pt-4 flex justify-end">
-                    <button
-                      type="submit"
-                      disabled={loading || !formData.current_password || !formData.new_password}
-                      className="px-6 py-2.5 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-indigo-500/20 flex items-center gap-2"
-                    >
-                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save size={18} />}
-                      Update Password
-                    </button>
-                  </div>
+                  <div className="pt-4 flex justify-end"><button type="submit" disabled={loading} className="px-6 py-2.5 rounded-lg text-sm font-bold text-white bg-indigo-600">Update Password</button></div>
                 </form>
               </div>
             )}
 
+            {activeTab === 'sync' && (
+              <div className="bg-white rounded-2xl border p-8 shadow-sm">
+                <div className="flex items-center gap-3 mb-6 pb-6 border-b"><Wifi size={20} /><div><h2 className="text-lg font-bold">TCP Sync</h2><p className="text-sm text-gray-500">Auto-connecting...</p></div></div>
+
+                {(connecting || (syncLoading && !connectionDetails)) ? (
+                  <div className="flex flex-col items-center py-12 gap-4"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /><p className="text-sm text-gray-500">Connecting...</p></div>
+                ) : isConnected ? (
+                  <>
+                    <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                      <p className="text-green-900 font-bold mb-2">✓ Connected</p>
+                      <div className="text-sm text-green-700 space-y-1">
+                        <p>Server: <span className="font-mono">{connectionDetails.server_address}</span></p>
+                        <p>Session ID: <span className="font-mono text-xs">{connectionDetails.session_id}</span></p>
+                      </div>
+                    </div>
+
+                    {syncStatus?.payload && (
+                      <>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                          <div className="p-4 bg-indigo-50 rounded-lg text-center"><Radio className="w-5 h-5 text-indigo-600 mx-auto mb-2" /><p className="text-2xl font-bold">{syncStatus.payload.devices_online || 0}</p><p className="text-xs">Online</p></div>
+                          <div className="p-4 bg-blue-50 rounded-lg text-center"><MessageSquare className="w-5 h-5 text-blue-600 mx-auto mb-2" /><p className="text-2xl font-bold">{syncStatus.payload.messages_sent || 0}</p><p className="text-xs">Sent</p></div>
+                          <div className="p-4 bg-purple-50 rounded-lg text-center"><MessageSquare className="w-5 h-5 text-purple-600 mx-auto mb-2" /><p className="text-2xl font-bold">{syncStatus.payload.messages_received || 0}</p><p className="text-xs">Received</p></div>
+                          <div className="p-4 bg-green-50 rounded-lg text-center"><BarChart3 className="w-5 h-5 text-green-600 mx-auto mb-2" /><p className="text-sm font-bold">{syncStatus.payload.network_quality || 'Good'}</p><p className="text-xs">{syncStatus.payload.rtt_ms}ms</p></div>
+                        </div>
+
+                        {/* RESTORED LAST SYNC BLOCK */}
+                        {syncStatus.payload.last_sync && (
+                          <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 mb-6">
+                            <p className="text-sm font-bold text-blue-900 mb-2">Last Sync:</p>
+                            <p className="text-sm text-blue-800">
+                              <span className="font-medium">{syncStatus.payload.last_sync.manga_title}</span>
+                              {' - '}Chapter {syncStatus.payload.last_sync.chapter}
+                            </p>
+                            <p className="text-xs text-blue-600 mt-1">
+                              {formatTimestamp(syncStatus.payload.last_sync.timestamp)}
+                            </p>
+                          </div>
+                        )}
+                      </>
+                    )}
+                    <div className="flex justify-end"><button onClick={handleDisconnectSync} className="px-6 py-2.5 rounded-lg text-sm font-bold text-white bg-red-600 flex items-center gap-2"><WifiOff size={18} /> Disconnect</button></div>
+                  </>
+                ) : (
+                  <div className="text-center py-12"><WifiOff className="w-8 h-8 text-gray-400 mx-auto mb-4" /><h3 className="font-bold">Disconnected</h3><button onClick={handleConnectSync} className="mt-4 px-6 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-bold">Reconnect</button></div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

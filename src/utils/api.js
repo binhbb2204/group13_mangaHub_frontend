@@ -36,7 +36,7 @@ export const buildWebSocketUrl = (path = '') => {
 
 // Create axios instance
 const axiosInstance = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: API_BASE_URL.trim(),
   headers: {
     'Content-Type': 'application/json',
   },
