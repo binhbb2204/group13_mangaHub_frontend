@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { 
-  Menu, X, BookOpen, MessageCircle, Settings, LogOut, 
-  User, ChevronDown 
+import {
+  Menu, X, BookOpen, MessageCircle, Settings, LogOut,
+  User, ChevronDown
 } from 'lucide-react';
 import axiosInstance from '../../utils/api';
+import NotificationBell from '../NotificationBell/NotificationBell';
 
 const Header = () => {
   // 1. ALL HOOKS MUST BE DECLARED FIRST
@@ -13,13 +14,13 @@ const Header = () => {
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [username, setUsername] = useState('');
-  
+
   const location = useLocation();
   const navigate = useNavigate();
   const dropdownRef = useRef(null);
 
   // 2. CONFIGURATION
-  const darkHeroRoutes = ['/', '/featured']; 
+  const darkHeroRoutes = ['/', '/featured'];
   const isDarkPage = darkHeroRoutes.includes(location.pathname);
 
   // 3. SCROLL & EVENT LISTENERS (useEffect)
@@ -28,7 +29,7 @@ const Header = () => {
       setIsScrolled(window.scrollY > 10);
     };
     window.addEventListener('scroll', handleScroll);
-    
+
     // Close dropdown when clicking outside
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -90,7 +91,7 @@ const Header = () => {
   const getHeaderBackground = () => {
     if (isScrolled) {
       return 'bg-white/95 backdrop-blur-md shadow-sm border-b border-slate-200 py-3';
-    } 
+    }
     if (isDarkPage) {
       return 'bg-transparent border-b border-white/10 py-4';
     }
@@ -114,19 +115,18 @@ const Header = () => {
 
   // 6. FINAL RETURN
   return (
-    <header 
+    <header
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${getHeaderBackground()}`}
     >
       <div className="max-w-[1440px] mx-auto px-4 md:px-8 flex items-center justify-between">
-        
+
         {/* --- LOGO --- */}
         <Link to="/" className="flex items-center gap-2 group">
           <div className="bg-indigo-600 text-white p-1.5 rounded-lg transition-colors">
             <BookOpen className="w-6 h-6" />
           </div>
-          <span className={`text-xl font-black tracking-tight transition-colors ${
-            useDarkText ? 'text-slate-800' : 'text-white'
-          }`}>
+          <span className={`text-xl font-black tracking-tight transition-colors ${useDarkText ? 'text-slate-800' : 'text-white'
+            }`}>
             MangaHub
           </span>
         </Link>
@@ -134,14 +134,13 @@ const Header = () => {
         {/* --- DESKTOP NAV --- */}
         <nav className="hidden lg:flex items-center gap-8">
           {navLinks.map((link) => (
-            <Link 
-              key={link.path} 
+            <Link
+              key={link.path}
               to={link.path}
-              className={`text-sm font-bold transition-colors flex items-center gap-2 ${
-                isActive(link.path)
+              className={`text-sm font-bold transition-colors flex items-center gap-2 ${isActive(link.path)
                   ? (useDarkText ? 'text-indigo-600' : 'text-indigo-400')
                   : (useDarkText ? 'text-slate-500 hover:text-slate-800' : 'text-white/70 hover:text-indigo-300')
-              }`}
+                }`}
             >
               {link.icon && link.icon}
               {link.name}
@@ -150,21 +149,19 @@ const Header = () => {
         </nav>
 
         {/* --- RIGHT ACTIONS (DESKTOP) --- */}
-        <div className="hidden lg:flex items-center gap-6">
-          
+        <div className="hidden lg:flex items-center gap-4">
+
           {/* Quick Links (Library, Chat) */}
-          <div className={`flex items-center gap-4 border-r pr-6 transition-colors ${
-            useDarkText ? 'border-slate-200' : 'border-white/20'
-          }`}>
+          <div className={`flex items-center gap-4 border-r pr-4 transition-colors ${useDarkText ? 'border-slate-200' : 'border-white/20'
+            }`}>
             {quickLinks.map((link) => (
-              <Link 
-                key={link.path} 
+              <Link
+                key={link.path}
                 to={link.path}
-                className={`flex items-center gap-2 text-sm font-bold transition-colors ${
-                  isActive(link.path) 
+                className={`flex items-center gap-2 text-sm font-bold transition-colors ${isActive(link.path)
                     ? (useDarkText ? 'text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full' : 'text-indigo-300 bg-indigo-500/20 px-3 py-1.5 rounded-full')
                     : (useDarkText ? 'text-slate-600 hover:text-indigo-600' : 'text-white/80 hover:text-indigo-300')
-                }`}
+                  }`}
               >
                 {link.icon}
                 {link.name}
@@ -172,18 +169,20 @@ const Header = () => {
             ))}
           </div>
 
+          {/* Notification Bell */}
+          <NotificationBell useDarkText={useDarkText} />
+
           {/* User Section / Dropdown */}
           <div className="relative" ref={dropdownRef}>
             {isLoggedIn ? (
               <>
                 {/* Trigger Button */}
-                <button 
+                <button
                   onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
-                  className={`flex items-center gap-3 pl-2 pr-3 py-1.5 rounded-full border transition-all ${
-                    useDarkText 
-                      ? 'border-slate-200 bg-slate-50 hover:border-indigo-200 text-slate-700' 
+                  className={`flex items-center gap-3 pl-2 pr-3 py-1.5 rounded-full border transition-all ${useDarkText
+                      ? 'border-slate-200 bg-slate-50 hover:border-indigo-200 text-slate-700'
                       : 'border-white/20 bg-white/10 hover:bg-white/20 text-white'
-                  }`}
+                    }`}
                 >
                   <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs font-bold">
                     {username ? username[0].toUpperCase() : <User size={14} />}
@@ -203,8 +202,8 @@ const Header = () => {
                     </div>
 
                     <div className="py-1">
-                      <Link 
-                        to="/settings" 
+                      <Link
+                        to="/settings"
                         className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
                         onClick={() => setIsUserDropdownOpen(false)}
                       >
@@ -214,7 +213,7 @@ const Header = () => {
                     </div>
 
                     <div className="border-t border-slate-100 py-1">
-                      <button 
+                      <button
                         onClick={handleLogout}
                         className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors text-left"
                       >
@@ -229,11 +228,10 @@ const Header = () => {
               // Login/Register Buttons
               <div className="flex items-center gap-3">
                 <Link to="/login">
-                  <button className={`text-sm font-bold px-4 py-2 rounded-full transition-all ${
-                    useDarkText 
-                      ? 'text-slate-600 hover:text-indigo-600 hover:bg-slate-50' 
+                  <button className={`text-sm font-bold px-4 py-2 rounded-full transition-all ${useDarkText
+                      ? 'text-slate-600 hover:text-indigo-600 hover:bg-slate-50'
                       : 'text-white hover:text-indigo-300 hover:bg-white/10'
-                  }`}>
+                    }`}>
                     Log In
                   </button>
                 </Link>
@@ -248,11 +246,10 @@ const Header = () => {
         </div>
 
         {/* --- MOBILE MENU BUTTON --- */}
-        <button 
+        <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className={`lg:hidden p-2 rounded-lg transition-colors ${
-            useDarkText ? 'text-slate-600 hover:bg-slate-100' : 'text-white hover:bg-white/10'
-          }`}
+          className={`lg:hidden p-2 rounded-lg transition-colors ${useDarkText ? 'text-slate-600 hover:bg-slate-100' : 'text-white hover:bg-white/10'
+            }`}
         >
           {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
         </button>
@@ -261,30 +258,28 @@ const Header = () => {
       {/* --- MOBILE MENU DROPDOWN --- */}
       {isMobileMenuOpen && (
         <div className="absolute top-full left-0 right-0 bg-white border-b border-slate-200 shadow-xl lg:hidden p-6 flex flex-col gap-4 animate-in slide-in-from-top-2">
-          
+
           {/* Main Links */}
           <div className="flex flex-col gap-2 border-b border-slate-100 pb-4">
             {/* Nav Links */}
             {[...navLinks, ...quickLinks].map((link) => (
-              <Link 
-                key={link.path} 
+              <Link
+                key={link.path}
                 to={link.path}
-                className={`p-3 rounded-xl flex items-center gap-3 font-bold text-base ${
-                  isActive(link.path) ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-slate-50'
-                }`}
+                className={`p-3 rounded-xl flex items-center gap-3 font-bold text-base ${isActive(link.path) ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-slate-50'
+                  }`}
               >
                 {link.icon || <span className="w-4 h-4" />}
                 {link.name}
               </Link>
             ))}
-            
+
             {/* Manually add Settings for Mobile view */}
             {isLoggedIn && (
-              <Link 
+              <Link
                 to="/settings"
-                className={`p-3 rounded-xl flex items-center gap-3 font-bold text-base ${
-                  isActive('/settings') ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-slate-50'
-                }`}
+                className={`p-3 rounded-xl flex items-center gap-3 font-bold text-base ${isActive('/settings') ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-slate-50'
+                  }`}
               >
                 <Settings className="w-4 h-4" />
                 Settings
@@ -302,7 +297,7 @@ const Header = () => {
                   </div>
                   <p className="text-sm font-bold text-indigo-900">{username}</p>
                 </div>
-                <button 
+                <button
                   onClick={handleLogout}
                   className="w-full text-center font-bold text-white bg-red-600 py-3.5 rounded-xl hover:bg-red-700 active:scale-95 transition-all shadow-md shadow-red-500/20 flex items-center justify-center gap-2"
                 >

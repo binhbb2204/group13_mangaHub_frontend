@@ -1,9 +1,13 @@
 import logo from './logo.svg';
 import './App.css';
 import Layout from './components/Layout/Layout';
+import { NotificationProvider } from './context/NotificationContext';
+
 function App() {
   return (
-    <Layout />
+    <NotificationProvider>
+      <Layout />
+    </NotificationProvider>
   );
 }
 
