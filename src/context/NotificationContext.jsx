@@ -10,7 +10,13 @@ export const NotificationProvider = ({ children }) => {
     const [notifications, setNotifications] = useState([]);
     const [unreadCount, setUnreadCount] = useState(0);
 
-    const { isConnected } = useSSE(`${API_URL}/events`, {
+    // Get JWT token from localStorage
+    const token = localStorage.getItem('token') || '';
+
+    // Build SSE URL with token for user authentication
+    const sseUrl = token ? `${API_URL}/events?token=${token}` : `${API_URL}/events`;
+
+    const { isConnected } = useSSE(sseUrl, {
         enabled: true,
         onMessage: (event) => {
             // Ignore heartbeat and connected messages
