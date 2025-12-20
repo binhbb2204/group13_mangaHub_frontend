@@ -1,9 +1,16 @@
-// src/context/WebSocketProvider.jsx
-import React, { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 export const WebSocketContext = createContext(null);
 
 const STORAGE_KEY = 'roomMessagesCache';
+const MAX_RECONNECT_ATTEMPTS = 6;
 
 function getToken() {
   return (
@@ -14,19 +21,30 @@ function getToken() {
   );
 }
 
-function makeWsUrl() {
-  const host = window.location.hostname || 'localhost';
+function buildWsUrl() {
+  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+  if (!apiBaseUrl) {
+    throw new Error('REACT_APP_API_BASE_URL is required');
+  }
+
   const token = getToken();
-  return `ws://${host}:9093/ws/chat?token=${encodeURIComponent(token)}`;
+  const url = new URL(apiBaseUrl);
+  const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+
+  return `${protocol}//${url.hostname}:9093/ws/chat?token=${encodeURIComponent(
+    token
+  )}`;
 }
 
 async function fetchMangaTitle(mangaId) {
-  const host = window.location.hostname || 'localhost';
+  const apiBaseUrl =
+    process.env.REACT_APP_API_BASE_URL || 'http://localhost:8080';
+
   try {
-    const res = await fetch(`http://${host}:8080/manga/info/${mangaId}`);
+    const res = await fetch(`${apiBaseUrl}/manga/info/${mangaId}`);
     if (!res.ok) return null;
     const data = await res.json();
-    return data.title || null;
+    return data?.title ?? null;
   } catch {
     return null;
   }
@@ -40,246 +58,304 @@ export default function WebSocketProvider({ children }) {
   const [isLoading, setIsLoading] = useState(false);
 
   const wsRef = useRef(null);
-  const reconnectTimer = useRef(null);
-  const reconnectAttempts = useRef(0);
-  const currentRoom = useRef(null);
-  const queueRef = useRef([]);
+  const reconnectTimerRef = useRef(null);
+  const reconnectAttemptsRef = useRef(0);
+  const currentRoomRef = useRef(null);
+  const messageQueueRef = useRef([]);
 
   useEffect(() => {
     try {
       const cached = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-      if (cached && typeof cached === 'object' && Object.keys(cached).length > 0) {
-        console.log('[WS] Loaded cached messages:', cached);
+      if (cached && typeof cached === 'object') {
         setRoomMessages(cached);
       }
-    } catch (e) {
-      console.warn('[WS] Failed to load cache', e);
-    }
+    } catch { }
   }, []);
 
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(roomMessages));
-      console.log('[WS] Cached messages:', roomMessages);
-    } catch (e) {
-      console.warn('[WS] Failed to save cache', e);
-    }
+    } catch { }
   }, [roomMessages]);
 
-  const sendOrQueue = useCallback((obj) => {
+  const enqueueOrSend = useCallback((payload) => {
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(obj));
-      return true;
+      ws.send(JSON.stringify(payload));
+      return;
     }
-    console.log('[WS] Queueing command:', obj);
-    queueRef.current.push(obj);
-    return false;
+    messageQueueRef.current.push(payload);
   }, []);
 
   const flushQueue = useCallback(() => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    console.log('[WS] Flushing queue, pending:', queueRef.current.length);
-    while (queueRef.current.length) {
-      const obj = queueRef.current.shift();
-      ws.send(JSON.stringify(obj));
+
+    while (messageQueueRef.current.length) {
+      ws.send(JSON.stringify(messageQueueRef.current.shift()));
     }
   }, []);
 
-  const addMessage = useCallback((room, msg) => {
+  const appendMessage = useCallback((room, message) => {
     setRoomMessages((prev) => {
       const list = prev[room] || [];
-      const exists = list.some((m) => m.id === msg.id);
-      if (exists) return prev;
-      const next = [...list, msg];
-      console.log(`[WS] Added message to ${room}:`, msg);
-      return { ...prev, [room]: next };
+      if (list.some((m) => m.id === message.id)) return prev;
+      return { ...prev, [room]: [...list, message] };
     });
   }, []);
 
-  const handleSystem = useCallback(async (payload) => {
-    const { metadata, room } = payload || {};
-    
-    if (metadata && Array.isArray(metadata.rooms)) {
-      // Fetch manga titles for manga rooms
-      const roomsWithTitles = await Promise.all(
-        metadata.rooms.map(async (r) => {
-          if (r.type === 'manga' && r.name && r.name.startsWith('manga-')) {
-            const mangaId = r.name.replace('manga-', '');
-            const title = await fetchMangaTitle(mangaId);
-            return { 
-              ...r, 
-              displayName: title || r.name,
-              mangaId 
-            };
-          }
-          return { ...r, displayName: r.name };
-        })
-      );
-      
-      console.log('[WS] Rooms with titles:', roomsWithTitles);
-      setRoomList(roomsWithTitles);
-      setIsLoading(false);
-    }
-    
-    if (metadata && metadata.room_name) {
-      const newRoom = {
-        name: metadata.room_name,
-        type: metadata.role === 'owner' ? 'custom' : metadata.type || 'custom',
-        messageCount: 0,
-        displayName: metadata.room_name,
-      };
-      setRoomList((prev) => {
-        const exists = prev.some((r) => r.name === newRoom.name);
-        return exists ? prev : [newRoom, ...prev];
-      });
-    }
-    
-    if (metadata && (metadata.userJoined || metadata.userLeft) && room) {
-      const msg = {
-        type: 'system',
-        content: metadata.userJoined
-          ? `${metadata.userJoined.username} joined`
-          : `${metadata.userLeft.username} left`,
-        room,
-        timestamp: new Date().toISOString(),
-      };
-      addMessage(room, msg);
-    }
-  }, [addMessage]);
+  const handleSystem = useCallback(
+    async ({ metadata, room }) => {
+      if (Array.isArray(metadata?.rooms)) {
+        const enrichedRooms = await Promise.all(
+          metadata.rooms.map(async (r) => {
+            if (r.type === 'manga' && r.name?.startsWith('manga-')) {
+              const mangaId = r.name.replace('manga-', '');
+              const title = await fetchMangaTitle(mangaId);
+              return {
+                ...r,
+                mangaId,
+                displayName: title || r.name,
+              };
+            }
+            return { ...r, displayName: r.name };
+          })
+        );
 
-  const handleHistory = useCallback((payload) => {
-    const { metadata, room } = payload || {};
-    console.log('[WS] History response:', { room, metadataCount: metadata?.messages?.length });
-    
-    if (!metadata || !Array.isArray(metadata.messages)) {
-      console.warn('[WS] No messages in history response');
-      return;
-    }
+        setRoomList(enrichedRooms);
+        setIsLoading(false);
+      }
+
+      if (metadata?.room_name) {
+        setRoomList((prev) => {
+          if (prev.some((r) => r.name === metadata.room_name)) return prev;
+          return [
+            {
+              name: metadata.room_name,
+              type: metadata.type || 'custom',
+              displayName: metadata.room_name,
+              messageCount: 0,
+            },
+            ...prev,
+          ];
+        });
+      }
+
+      if (room && (metadata?.userJoined || metadata?.userLeft)) {
+        appendMessage(room, {
+          type: 'system',
+          content: metadata.userJoined
+            ? `${metadata.userJoined.username} joined`
+            : `${metadata.userLeft.username} left`,
+          timestamp: new Date().toISOString(),
+          room,
+        });
+      }
+    },
+    [appendMessage]
+  );
+
+  const handleHistory = useCallback(({ metadata, room }) => {
+    if (!Array.isArray(metadata?.messages)) return;
 
     const roomName = room || 'global';
-    const normalized = metadata.messages.map((m, idx) => ({
-      id: m.id || m.message_id || `hist-${idx}-${roomName}`,
+    const normalized = metadata.messages.map((m, i) => ({
+      id: m.id || m.message_id || `hist-${i}-${roomName}`,
       type: 'text',
-      from: m.from || m.username || m.sender_username || m.sender || m.user || 'Unknown',
+      from:
+        m.from ||
+        m.username ||
+        m.sender_username ||
+        m.sender ||
+        m.user ||
+        'Unknown',
       content: m.content || m.message || '',
-      timestamp: m.timestamp || m.created_at || m.createdAt || new Date().toISOString(),
+      timestamp:
+        m.timestamp || m.created_at || m.createdAt || new Date().toISOString(),
       room: roomName,
     }));
 
-    console.log(`[WS] Normalized ${normalized.length} messages for ${roomName}`);
-    setRoomMessages((prev) => ({
-      ...prev,
-      [roomName]: normalized,
-    }));
+    setRoomMessages((prev) => ({ ...prev, [roomName]: normalized }));
   }, []);
 
-  const handleIncoming = useCallback((evt) => {
-    try {
-      const data = JSON.parse(evt.data);
-      console.log('[WS] Incoming:', data.type, data);
+  const handleMessage = useCallback(
+    (event) => {
+      try {
+        const data = JSON.parse(event.data);
 
-      if (data.type === 'text' || data.type === 'message') {
-        const room = data.room || 'global';
-        addMessage(room, data);
-      } else if (data.type === 'system') {
-        handleSystem(data);
-      } else if (data.type === 'history') {
-        handleHistory(data);
-      } else if (data.type === 'error') {
-        setError(data.content || 'Unknown error');
-      }
-    } catch (e) {
-      console.error('[WS] Parse error', e);
-    }
-  }, [addMessage, handleSystem, handleHistory]);
+        if (data.type === 'text' || data.type === 'message') {
+          appendMessage(data.room || 'global', data);
+        } else if (data.type === 'system') {
+          handleSystem(data);
+        } else if (data.type === 'history') {
+          handleHistory(data);
+        } else if (data.type === 'error') {
+          setError(data.content || 'Unknown error');
+        }
+      } catch { }
+    },
+    [appendMessage, handleHistory, handleSystem]
+  );
 
   const connect = useCallback(() => {
-    setError('');
-    const url = makeWsUrl();
-    console.log('[WS] Connecting to', url);
-    const ws = new WebSocket(url);
-    wsRef.current = ws;
+    if (!getToken()) {
+      console.warn('No authentication token found. Cannot connect to WebSocket.');
+      return;
+    }
 
-    ws.onopen = () => {
-      console.log('[WS] Connected');
-      setConnected(true);
-      reconnectAttempts.current = 0;
-      setIsLoading(false);
-      flushQueue();
-      
-      sendOrQueue({ type: 'command', command: '/rooms' });
-      if (currentRoom.current) {
-        console.log('[WS] Refetching history for room:', currentRoom.current);
-        sendOrQueue({ type: 'command', room: currentRoom.current, command: '/history 50' });
-      }
-    };
+    // Check if max reconnect attempts reached
+    if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+      console.warn('WebSocket max reconnection attempts reached. Stopping reconnection.');
+      setError('Failed to connect after multiple attempts');
+      return;
+    }
 
-    ws.onmessage = handleIncoming;
+    try {
+      const wsUrl = buildWsUrl();
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
-    ws.onerror = (e) => {
-      console.warn('[WS] Error', e);
-      setError('Connection error');
-    };
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+        setConnected(true);
+        setError('');
+        reconnectAttemptsRef.current = 0;
+        flushQueue();
+        enqueueOrSend({ type: 'command', command: '/rooms' });
 
-    ws.onclose = () => {
-      console.log('[WS] Disconnected');
-      setConnected(false);
-      const attempt = Math.min(reconnectAttempts.current + 1, 6);
-      reconnectAttempts.current = attempt;
-      const delay = Math.min(30000, 1000 * Math.pow(2, attempt));
-      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
-      reconnectTimer.current = setTimeout(connect, delay);
-    };
-  }, [flushQueue, handleIncoming, sendOrQueue]);
+        if (currentRoomRef.current) {
+          enqueueOrSend({
+            type: 'command',
+            room: currentRoomRef.current,
+            command: '/users',
+          });
+          enqueueOrSend({
+            type: 'command',
+            room: currentRoomRef.current,
+            command: '/history 50',
+          });
+        }
+      };
+
+      ws.onmessage = handleMessage;
+
+      ws.onerror = (err) => {
+        console.error('WebSocket error:', err);
+        setError('Connection error');
+      };
+
+      ws.onclose = (event) => {
+        console.log('WebSocket closed:', event.code, event.reason);
+        setConnected(false);
+
+        // Only attempt reconnect if not a normal closure and below max attempts
+        if (event.code !== 1000 && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+          reconnectAttemptsRef.current++;
+
+          const attempt = Math.min(reconnectAttemptsRef.current, MAX_RECONNECT_ATTEMPTS);
+          const delay = Math.min(30000, 1000 * Math.pow(2, attempt));
+
+          console.log(`Attempting to reconnect WebSocket... (attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS}) in ${delay}ms`);
+          setError(`Connection lost. Retrying... (${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})`);
+
+          clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = setTimeout(connect, delay);
+        } else if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+          setError('Failed to connect to chat service');
+        }
+      };
+    } catch (e) {
+      console.error('Failed to create WebSocket connection:', e);
+      setError(e.message);
+    }
+  }, [enqueueOrSend, flushQueue, handleMessage]);
 
   useEffect(() => {
-    connect();
+    let isMounted = true;
+
+    if (isMounted) {
+      connect();
+    }
+
     return () => {
-      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
-      const ws = wsRef.current;
-      if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+      isMounted = false;
+      clearTimeout(reconnectTimerRef.current);
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.close(1000, 'Component unmounting');
+      }
     };
   }, [connect]);
 
-  const fetchRooms = useCallback(() => {
-    setIsLoading(true);
-    sendOrQueue({ type: 'command', command: '/rooms' });
-  }, [sendOrQueue]);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const ws = wsRef.current;
+      const hasToken = getToken();
+      const shouldReconnect = hasToken &&
+        !connected &&
+        (!ws || ws.readyState === WebSocket.CLOSED) &&
+        reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS;
 
-  const createRoom = useCallback((roomName) => {
-    if (!roomName || !roomName.trim()) return;
-    sendOrQueue({ type: 'command', command: `/create ${roomName.trim()}` });
-  }, [sendOrQueue]);
+      if (shouldReconnect) {
+        connect();
+      }
+    }, 5000); // Check every 5 seconds instead of 1
 
-  const joinRoom = useCallback((roomName) => {
-    console.log('[WS] Joining room:', roomName);
-    currentRoom.current = roomName;
-    sendOrQueue({ type: 'command', room: roomName, command: '/history 50' });
-  }, [sendOrQueue]);
+    return () => clearInterval(interval);
+  }, [connected, connect]);
 
-  const leaveRoom = useCallback((roomName) => {
-    if (currentRoom.current === roomName) currentRoom.current = null;
-  }, []);
-
-  const sendMessage = useCallback((roomName, content) => {
-    if (!content || !content.trim()) return;
-    sendOrQueue({ type: 'text', room: roomName || 'global', content: content.trim() });
-  }, [sendOrQueue]);
-
-  const value = useMemo(() => ({
-    connected,
-    error,
-    isLoading,
-    roomList,
-    roomMessages,
-    fetchRooms,
-    createRoom,
-    joinRoom,
-    leaveRoom,
-    sendMessage,
-  }), [connected, error, isLoading, roomList, roomMessages, fetchRooms, createRoom, joinRoom, leaveRoom, sendMessage]);
+  const value = useMemo(
+    () => ({
+      connected,
+      error,
+      isLoading,
+      roomList,
+      roomMessages,
+      fetchRooms: () => {
+        setIsLoading(true);
+        enqueueOrSend({ type: 'command', command: '/rooms' });
+      },
+      createRoom: (name) => {
+        if (name?.trim()) {
+          enqueueOrSend({ type: 'command', command: `/create ${name.trim()}` });
+        }
+      },
+      joinRoom: (room) => {
+        currentRoomRef.current = room;
+        enqueueOrSend({
+          type: 'command',
+          room,
+          command: '/users',
+        });
+        enqueueOrSend({
+          type: 'command',
+          room,
+          command: '/history 50',
+        });
+      },
+      leaveRoom: (room) => {
+        if (currentRoomRef.current === room) {
+          currentRoomRef.current = null;
+        }
+      },
+      sendMessage: (room, content) => {
+        if (content?.trim()) {
+          enqueueOrSend({
+            type: 'text',
+            room: room || 'global',
+            content: content.trim(),
+          });
+        }
+      },
+    }),
+    [
+      connected,
+      error,
+      isLoading,
+      roomList,
+      roomMessages,
+      enqueueOrSend,
+    ]
+  );
 
   return (
     <WebSocketContext.Provider value={value}>
