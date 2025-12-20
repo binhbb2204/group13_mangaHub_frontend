@@ -3,8 +3,8 @@ import { useSSE } from '../hooks/useSSE';
 
 const NotificationContext = createContext(null);
 
-// Connect to UDP server's SSE endpoint
-const API_URL = process.env.REACT_APP_UDP_SSE_URL || 'http://localhost:9092';
+// Connect to UDP server's SSE endpoint (port 9094)
+const API_URL = process.env.REACT_APP_UDP_SSE_URL || 'http://localhost:9094';
 
 export const NotificationProvider = ({ children }) => {
     const [notifications, setNotifications] = useState([]);
