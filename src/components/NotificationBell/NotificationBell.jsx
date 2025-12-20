@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bell, X, BookOpen, Sparkles } from 'lucide-react';
+// import { Bell, X, BookOpen, Sparkles } from 'lucide-react';
+import { Bell, X, BookOpen, RefreshCw } from 'lucide-react';
 import { useNotifications } from '../../context/NotificationContext';
+import { API_BASE_URL } from '../../utils/api';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080';
+const API_URL = API_BASE_URL;
 
 const NotificationBell = ({ useDarkText }) => {
     const { notifications, unreadCount, markAsRead, markAllAsRead, removeNotification, clearAll } = useNotifications();
@@ -66,11 +68,11 @@ const NotificationBell = ({ useDarkText }) => {
             case 'manga_created':
                 return <BookOpen className="w-5 h-5 text-indigo-600" />;
             case 'chapter_release':
-                return <Sparkles className="w-5 h-5 text-amber-600" />;
+                return <RefreshCw className="w-5 h-5 text-amber-600" />;
             case 'library_update':
                 return <BookOpen className="w-5 h-5 text-green-600" />;
             case 'progress_update':
-                return <Sparkles className="w-5 h-5 text-blue-600" />;
+                return <RefreshCw className="w-5 h-5 text-blue-600" />;
             default:
                 return <Bell className="w-5 h-5 text-slate-600" />;
         }

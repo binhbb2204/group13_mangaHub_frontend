@@ -26,6 +26,18 @@ export const useSSE = (url, options = {}) => {
   const reconnectTimeoutRef = useRef(null);
   const reconnectAttemptsRef = useRef(0);
 
+  // Store callbacks in refs to prevent reconnection on callback changes
+  const onMessageRef = useRef(onMessage);
+  const onErrorRef = useRef(onError);
+  const onConnectRef = useRef(onConnect);
+
+  // Update refs when callbacks change without triggering reconnection
+  useEffect(() => {
+    onMessageRef.current = onMessage;
+    onErrorRef.current = onError;
+    onConnectRef.current = onConnect;
+  });
+
   useEffect(() => {
     if (!enabled || !url) return;
 
@@ -54,14 +66,14 @@ export const useSSE = (url, options = {}) => {
           setIsConnected(true);
           setError(null);
           reconnectAttemptsRef.current = 0; // Reset attempts on successful connection
-          if (onConnect) onConnect();
+          if (onConnectRef.current) onConnectRef.current();
         };
 
         eventSource.onmessage = (event) => {
           try {
             const parsedData = JSON.parse(event.data);
             setData(parsedData);
-            if (onMessage) onMessage(parsedData);
+            if (onMessageRef.current) onMessageRef.current(parsedData);
           } catch (err) {
             console.error('Failed to parse SSE message:', err);
           }
@@ -76,7 +88,7 @@ export const useSSE = (url, options = {}) => {
           setIsConnected(false);
           eventSource.close();
 
-          if (onError) onError(err);
+          if (onErrorRef.current) onErrorRef.current(err);
 
           // Increment reconnect attempts
           reconnectAttemptsRef.current++;
@@ -124,7 +136,7 @@ export const useSSE = (url, options = {}) => {
       // Reset attempts on unmount
       reconnectAttemptsRef.current = 0;
     };
-  }, [url, enabled, reconnectInterval, onMessage, onError, onConnect]);
+  }, [url, enabled, reconnectInterval]); // Removed callback dependencies - using refs instead
 
   return { data, error, isConnected };
 };
