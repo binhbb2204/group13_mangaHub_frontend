@@ -14,9 +14,7 @@ export const ChatProvider = ({ children }) => {
     const token = localStorage.getItem('token');
     if (!token) return;
 
-    // Use your utility. Note: Passing the full path including the port swap if needed
-    // If your backend binds WS to 9093, we override the default 8080 here
-    const wsUrl = buildWebSocketUrl('/ws/chat').replace(':8080', ':9093');
+    const wsUrl = buildWebSocketUrl('/ws/chat');
     const fullUrl = `${wsUrl}?token=${token}`;
 
     const ws = new WebSocket(fullUrl);
@@ -71,9 +69,9 @@ export const ChatProvider = ({ children }) => {
   };
 
   return (
-    <ChatContext.Provider value={{ 
-      isConnected, rooms, messages, onlineUsers, 
-      sendMessage, sendCommand, setMessages 
+    <ChatContext.Provider value={{
+      isConnected, rooms, messages, onlineUsers,
+      sendMessage, sendCommand, setMessages
     }}>
       {children}
     </ChatContext.Provider>

@@ -1,9 +1,16 @@
 import axios from 'axios';
+import { discoverBackend, getLastKnownBackend } from '../services/discoveryService';
 
-// Resolve API base URL dynamically
+let discoveredConfig = null;
+
 const normalizeBaseUrl = (url) => (url?.endsWith('/') ? url.slice(0, -1) : url);
 
 const getEnvBaseUrl = () => normalizeBaseUrl(process.env.REACT_APP_API_BASE_URL);
+
+const getDiscoveredBaseUrl = () => {
+  if (!discoveredConfig || !discoveredConfig.services) return null;
+  return normalizeBaseUrl(discoveredConfig.services.api);
+};
 
 const getWindowBaseUrl = () => {
   if (typeof window === 'undefined') return null;
@@ -13,38 +20,60 @@ const getWindowBaseUrl = () => {
   return `${safeProtocol}//${hostname}:${port}`;
 };
 
-export const API_BASE_URL =
-  getEnvBaseUrl() ||
-  normalizeBaseUrl(getWindowBaseUrl()) ||
-  'http://localhost:8080';
+const getApiBaseUrl = () => {
+  return getEnvBaseUrl() ||
+    getDiscoveredBaseUrl() ||
+    normalizeBaseUrl(getWindowBaseUrl()) ||
+    'http://localhost:8080';
+};
+
+export const API_BASE_URL = getApiBaseUrl();
 
 export const buildApiUrl = (path = '') => {
+  const baseUrl = getApiBaseUrl();
   const suffix = path.startsWith('/') ? path : `/${path}`;
-  return `${API_BASE_URL}${suffix}`;
+  return `${baseUrl}${suffix}`;
 };
 
 export const buildWebSocketUrl = (path = '') => {
   if (typeof window === 'undefined') {
-    return 'ws://localhost:8080';
+    return 'ws://localhost:9093';
   }
+
+  if (discoveredConfig && discoveredConfig.services && discoveredConfig.services.websocket) {
+    const suffix = path.startsWith('/') ? path : `/${path}`;
+    return `${discoveredConfig.services.websocket}${suffix}`;
+  }
+
   const { hostname } = window.location;
-  const port = process.env.REACT_APP_API_PORT || '8080';
+  const port = process.env.REACT_APP_WEBSOCKET_PORT || '9093';
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const suffix = path.startsWith('/') ? path : `/${path}`;
   return `${protocol}//${hostname}:${port}${suffix}`;
 };
 
-// Create axios instance
+export async function initializeBackendDiscovery() {
+  const cached = getLastKnownBackend();
+  if (cached) {
+    discoveredConfig = cached;
+    return;
+  }
+
+  const discovered = await discoverBackend();
+  if (discovered) {
+    discoveredConfig = discovered;
+  }
+}
+
 const axiosInstance = axios.create({
-  baseURL: API_BASE_URL.trim(),
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Request interceptor: Add token
 axiosInstance.interceptors.request.use(
   (config) => {
+    config.baseURL = getApiBaseUrl().trim();
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -56,12 +85,11 @@ axiosInstance.interceptors.request.use(
   }
 );
 
-// Response interceptor: Handle 401
 axiosInstance.interceptors.response.use(
   (response) => response,
   (error) => {
     const originalRequest = error.config;
-    
+
     // Only redirect if it's 401 AND NOT a login attempt
     if (error.response?.status === 401 && !originalRequest.url.includes('/auth/login')) {
       localStorage.clear();

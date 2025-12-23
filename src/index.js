@@ -6,16 +6,21 @@ import { BrowserRouter } from 'react-router-dom';
 import { ChatProvider } from './context/ChatContext';
 import reportWebVitals from './reportWebVitals';
 import WebSocketProvider from './context/WebSocketProvider';
+import { initializeBackendDiscovery } from './utils/api';
+
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-    <BrowserRouter>
-      <WebSocketProvider>
-        <App />
-      </WebSocketProvider>
-    </BrowserRouter>
-  </React.StrictMode>
-);
+
+initializeBackendDiscovery().then(() => {
+  root.render(
+    <React.StrictMode>
+      <BrowserRouter>
+        <WebSocketProvider>
+          <App />
+        </WebSocketProvider>
+      </BrowserRouter>
+    </React.StrictMode>
+  );
+});
 
 // If you want to start measuring performance in your app, pass a function
 // to log results (for example: reportWebVitals(console.log))

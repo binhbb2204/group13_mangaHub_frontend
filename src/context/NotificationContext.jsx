@@ -1,20 +1,19 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import { useSSE } from '../hooks/useSSE';
+import { buildApiUrl } from '../utils/api';
 
 const NotificationContext = createContext(null);
-
-// Connect to UDP server's SSE endpoint (port 9094)
-const API_URL = process.env.REACT_APP_UDP_SSE_URL || 'http://localhost:9094';
 
 export const NotificationProvider = ({ children }) => {
     const [notifications, setNotifications] = useState([]);
     const [unreadCount, setUnreadCount] = useState(0);
 
-    // Get JWT token from localStorage
     const token = localStorage.getItem('token') || '';
 
-    // Build SSE URL with token for user authentication
-    const sseUrl = token ? `${API_URL}/events?token=${token}` : `${API_URL}/events`;
+    const sseUrl = useMemo(() => {
+        const baseUrl = buildApiUrl('/events');
+        return token ? `${baseUrl}?token=${token}` : baseUrl;
+    }, [token]);
 
     const { isConnected } = useSSE(sseUrl, {
         enabled: true,

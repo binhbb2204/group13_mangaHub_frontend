@@ -6,6 +6,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { buildWebSocketUrl, buildApiUrl } from '../utils/api';
 
 export const WebSocketContext = createContext(null);
 
@@ -21,27 +22,9 @@ function getToken() {
   );
 }
 
-function buildWsUrl() {
-  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
-  if (!apiBaseUrl) {
-    throw new Error('REACT_APP_API_BASE_URL is required');
-  }
-
-  const token = getToken();
-  const url = new URL(apiBaseUrl);
-  const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-
-  return `${protocol}//${url.hostname}:9093/ws/chat?token=${encodeURIComponent(
-    token
-  )}`;
-}
-
 async function fetchMangaTitle(mangaId) {
-  const apiBaseUrl =
-    process.env.REACT_APP_API_BASE_URL || 'http://localhost:8080';
-
   try {
-    const res = await fetch(`${apiBaseUrl}/manga/info/${mangaId}`);
+    const res = await fetch(buildApiUrl(`/manga/info/${mangaId}`));
     if (!res.ok) return null;
     const data = await res.json();
     return data?.title ?? null;
@@ -211,7 +194,8 @@ export default function WebSocketProvider({ children }) {
     }
 
     try {
-      const wsUrl = buildWsUrl();
+      const token = getToken();
+      const wsUrl = `${buildWebSocketUrl('/ws/chat')}?token=${encodeURIComponent(token)}`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
