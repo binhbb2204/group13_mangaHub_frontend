@@ -87,16 +87,27 @@ const MangaDetails = () => {
           headers: { 'Authorization': `Bearer ${token}` }
         });
 
+        console.log('[MangaDetails] Progress response status:', response.status);
+
         if (response.ok) {
           const data = await response.json();
-          if (data.user_rating) {
+          console.log('[MangaDetails] Progress data:', data);
+          console.log('[MangaDetails] user_rating value:', data.user_rating, 'type:', typeof data.user_rating);
+
+          if (data.user_rating !== null && data.user_rating !== undefined) {
+            console.log('[MangaDetails] Setting userRating to:', data.user_rating);
             setUserRating(data.user_rating);
+          } else {
+            console.log('[MangaDetails] user_rating is null or undefined, not setting');
           }
+
           if (data.current_chapter !== undefined) {
             setUserCurrentChapter(data.current_chapter);
           }
 
           // Add user's rating to reviews list
+        } else {
+          console.log('[MangaDetails] Progress response not ok');
         }
       } catch (err) {
         console.log('No user rating found');
@@ -244,10 +255,20 @@ const MangaDetails = () => {
 
       // Submit rating to backend
       try {
+        // First, ensure manga is in library before updating rating
+        if (!inLibrary) {
+          console.log('[MangaDetails] Adding manga to library before rating...');
+          await libraryAPI.addToLibrary(id);
+          setInLibrary(true);
+        }
+
+        console.log('[MangaDetails] Submitting rating:', inputRating);
         await libraryAPI.updateProgress(id, userCurrentChapter, inputRating);
-        console.log('Rating submitted successfully');
+        console.log('[MangaDetails] Rating submitted successfully');
       } catch (err) {
-        console.error('Failed to submit rating:', err);
+        console.error('[MangaDetails] Failed to submit rating:', err);
+        // Show error to user
+        alert('Failed to save rating. Please try again.');
       }
     }
 

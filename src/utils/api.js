@@ -45,8 +45,19 @@ export const buildWebSocketUrl = (path = '') => {
     return `${discoveredConfig.services.websocket}${suffix}`;
   }
 
+  // Prioritize environment variables for consistent WebSocket connection
+  const envHost = process.env.REACT_APP_WS_HOST || process.env.REACT_APP_BACKEND_HOST;
+  const envPort = process.env.REACT_APP_WS_PORT || process.env.REACT_APP_WEBSOCKET_PORT || '9093';
+
+  if (envHost) {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const suffix = path.startsWith('/') ? path : `/${path}`;
+    return `${protocol}//${envHost}:${envPort}${suffix}`;
+  }
+
+  // Fallback to dynamic hostname detection
   const { hostname } = window.location;
-  const port = process.env.REACT_APP_WEBSOCKET_PORT || '9093';
+  const port = envPort;
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const suffix = path.startsWith('/') ? path : `/${path}`;
   return `${protocol}//${hostname}:${port}${suffix}`;

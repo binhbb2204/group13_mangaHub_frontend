@@ -45,6 +45,8 @@ export default function WebSocketProvider({ children }) {
   const reconnectAttemptsRef = useRef(0);
   const currentRoomRef = useRef(null);
   const messageQueueRef = useRef([]);
+  const processedMessageIds = useRef(new Set());
+  const lastJoinTimeRef = useRef({});
 
   useEffect(() => {
     try {
@@ -80,14 +82,53 @@ export default function WebSocketProvider({ children }) {
   }, []);
 
   const appendMessage = useCallback((room, message) => {
+    console.log('[WebSocket] Appending message:', { room, message });
+    console.log('[WebSocket] Message details:', JSON.stringify(message, null, 2));
+
+    // Check if we've already processed this message ID to prevent duplicates
+    // This handles React Strict Mode double-calling and race conditions
+    if (message.id && processedMessageIds.current.has(message.id)) {
+      console.log('[WebSocket] Message already processed (via ref), skipping');
+      return;
+    }
+
+    // Mark message as processed
+    if (message.id) {
+      processedMessageIds.current.add(message.id);
+
+      // Clean up old message IDs (keep last 100)
+      if (processedMessageIds.current.size > 100) {
+        const idsArray = Array.from(processedMessageIds.current);
+        processedMessageIds.current = new Set(idsArray.slice(-100));
+      }
+    }
+
     setRoomMessages((prev) => {
       const list = prev[room] || [];
-      if (list.some((m) => m.id === message.id)) return prev;
-      return { ...prev, [room]: [...list, message] };
-    });
-  }, []);
 
-  const handleSystem = useCallback(
+      // Double-check in state as well (defensive)
+      const isDuplicate = message.id && list.some((m) => m.id === message.id);
+      console.log('[WebSocket] State duplicate check:', {
+        isDuplicate,
+        messageId: message.id,
+        existingIds: list.map(m => m.id).slice(-5)
+      });
+
+      if (isDuplicate) {
+        console.log('[WebSocket] Message rejected as duplicate in state');
+        return prev;
+      }
+
+      // Add message to the room - create entirely new object to ensure React detects the change
+      const newList = [...list, message];
+      const newState = { ...prev, [room]: newList };
+      console.log('[WebSocket] Message added successfully. New count:', newList.length);
+      console.log('[WebSocket] All messages in room:', newList.map(m => ({ id: m.id, from: m.from, content: m.content })));
+      console.log('[WebSocket] Returning new state object');
+
+      return newState;
+    });
+  }, []); const handleSystem = useCallback(
     async ({ metadata, room }) => {
       if (Array.isArray(metadata?.rooms)) {
         const enrichedRooms = await Promise.all(
@@ -165,17 +206,36 @@ export default function WebSocketProvider({ children }) {
     (event) => {
       try {
         const data = JSON.parse(event.data);
+        console.log('[WebSocket] Received message:', data);
+        console.log('[WebSocket] Message type:', data.type, '| Room:', data.room);
 
         if (data.type === 'text' || data.type === 'message') {
+          console.log('[WebSocket] Processing text message for room:', data.room || 'global');
           appendMessage(data.room || 'global', data);
+        } else if (data.type === 'presence') {
+          console.log('[WebSocket] Processing presence message (join/leave)');
+          // Presence messages are system notifications about users joining/leaving
+          appendMessage(data.room || 'global', {
+            ...data,
+            type: 'system', // Treat as system message for display
+          });
         } else if (data.type === 'system') {
+          console.log('[WebSocket] Processing system message');
           handleSystem(data);
         } else if (data.type === 'history') {
+          console.log('[WebSocket] Processing history message');
           handleHistory(data);
         } else if (data.type === 'error') {
+          console.log('[WebSocket] Processing error message');
           setError(data.content || 'Unknown error');
+        } else if (data.type === 'userlist') {
+          console.log('[WebSocket] Processing userlist message (ignored for chat display)');
+        } else {
+          console.warn('[WebSocket] Unknown message type:', data.type);
         }
-      } catch { }
+      } catch (err) {
+        console.error('[WebSocket] Error parsing message:', err);
+      }
     },
     [appendMessage, handleHistory, handleSystem]
   );
@@ -200,7 +260,8 @@ export default function WebSocketProvider({ children }) {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log('WebSocket connected');
+        console.log('[WebSocket] Connected successfully');
+        console.log('[WebSocket] Connection URL:', wsUrl.replace(/token=[^&]+/, 'token=***'));
         setConnected(true);
         setError('');
         reconnectAttemptsRef.current = 0;
@@ -305,10 +366,25 @@ export default function WebSocketProvider({ children }) {
       },
       joinRoom: (room) => {
         currentRoomRef.current = room;
+
+        // Smart debounce: prevent duplicate joins to the SAME room
+        const now = Date.now();
+        const lastJoinTime = lastJoinTimeRef.current[room] || 0;
+
+        // Allow immediate join if switching to a different room, or if 2s passed
+        if (now - lastJoinTime < 2000) {
+          console.log('[WebSocket] Skipping joinRoom - already joined recently:', room);
+          return;
+        }
+
+        lastJoinTimeRef.current[room] = now;
+        console.log('[WebSocket] Sending /join command for room:', room);
+
+        // Send /join command to backend
         enqueueOrSend({
           type: 'command',
           room,
-          command: '/users',
+          command: `/join ${room}`,
         });
         enqueueOrSend({
           type: 'command',
@@ -323,11 +399,13 @@ export default function WebSocketProvider({ children }) {
       },
       sendMessage: (room, content) => {
         if (content?.trim()) {
-          enqueueOrSend({
+          const payload = {
             type: 'text',
             room: room || 'global',
             content: content.trim(),
-          });
+          };
+          console.log('[WebSocket] Sending message:', payload);
+          enqueueOrSend(payload);
         }
       },
     }),
@@ -337,6 +415,7 @@ export default function WebSocketProvider({ children }) {
       isLoading,
       roomList,
       roomMessages,
+
       enqueueOrSend,
     ]
   );

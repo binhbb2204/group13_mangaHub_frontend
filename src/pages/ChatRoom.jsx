@@ -14,11 +14,24 @@ export default function ChatRoom() {
   useEffect(() => {
     joinRoom(roomName);
     return () => leaveRoom(roomName);
-  }, [roomName, joinRoom, leaveRoom]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomName]); // Only re-run when roomName changes
 
-  const messages = useMemo(() => roomMessages[roomName] || [], [roomMessages, roomName]);
+  const messages = useMemo(() => {
+    const msgs = roomMessages[roomName] || [];
+    // Filter out presence messages (joined/left the chat)
+    const filteredMsgs = msgs.filter(msg => {
+      if (msg.type === 'system' && msg.content) {
+        return !msg.content.includes('joined the chat') && !msg.content.includes('left the chat');
+      }
+      return true;
+    });
+    console.log('[ChatRoom] Messages updated for room:', roomName, '| Count:', filteredMsgs.length, '| Messages:', filteredMsgs);
+    return filteredMsgs;
+  }, [roomMessages, roomName]);
 
   useEffect(() => {
+    console.log('[ChatRoom] Messages effect triggered. Message count:', messages.length);
     if (listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
@@ -37,7 +50,7 @@ export default function ChatRoom() {
       {/* Room Header */}
       <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white/80 backdrop-blur-sm">
         <div className="flex items-center gap-4">
-          <button 
+          <button
             onClick={() => navigate('/chat')}
             className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-600"
           >
@@ -56,17 +69,19 @@ export default function ChatRoom() {
       </div>
 
       {/* Message List */}
-      <div 
+      <div
         ref={listRef}
         className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/50"
       >
         {messages.map((m, i) => {
+          console.log('[ChatRoom] Rendering message:', i, m);
           const isMine = (m.from === me || m.username === me || m.userId === localStorage.getItem('userId'));
           const isSystem = m.type === 'system';
+          const msgKey = m.id || `${m.from}-${m.timestamp}-${i}`;
 
           if (isSystem) {
             return (
-              <div key={i} className="flex justify-center my-2">
+              <div key={msgKey} className="flex justify-center my-2">
                 <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400 bg-slate-100 px-3 py-1 rounded-full">
                   {m.content}
                 </span>
@@ -75,7 +90,7 @@ export default function ChatRoom() {
           }
 
           return (
-            <div key={i} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
+            <div key={msgKey} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
               {!isMine && (
                 <span className="text-xs font-semibold text-slate-500 ml-2 mb-1">
                   {m.from || m.username}
@@ -83,8 +98,8 @@ export default function ChatRoom() {
               )}
               <div className={`
                 max-w-[75%] px-4 py-2.5 rounded-2xl text-sm shadow-sm
-                ${isMine 
-                  ? 'bg-indigo-600 text-white rounded-tr-none' 
+                ${isMine
+                  ? 'bg-indigo-600 text-white rounded-tr-none'
                   : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'}
               `}>
                 {m.content}
@@ -110,11 +125,10 @@ export default function ChatRoom() {
           <button
             onClick={onSend}
             disabled={!connected || !draft.trim()}
-            className={`p-3 rounded-xl transition-all ${
-              connected && draft.trim() 
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' 
-                : 'bg-slate-300 text-slate-100 cursor-not-allowed'
-            }`}
+            className={`p-3 rounded-xl transition-all ${connected && draft.trim()
+              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
+              : 'bg-slate-300 text-slate-100 cursor-not-allowed'
+              }`}
           >
             <Send size={18} />
           </button>

@@ -12,13 +12,11 @@ const root = ReactDOM.createRoot(document.getElementById('root'));
 
 initializeBackendDiscovery().then(() => {
   root.render(
-    <React.StrictMode>
-      <BrowserRouter>
-        <WebSocketProvider>
-          <App />
-        </WebSocketProvider>
-      </BrowserRouter>
-    </React.StrictMode>
+    <BrowserRouter>
+      <WebSocketProvider>
+        <App />
+      </WebSocketProvider>
+    </BrowserRouter>
   );
 });
 
